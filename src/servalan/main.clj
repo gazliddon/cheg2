@@ -72,10 +72,11 @@
    :id (keyword-uuid)
    :ws-channel ws-channel })
 
-
+(defn mk-player-msg [msg event-time]
+  {:msg  msg  :event-time event-time})
 
 (defn msg-player! [player msg event-time]
-  (a/put! (:to-player player){:msg  msg  :event-time event-time}))
+  (a/put! (:to-player player) (mk-player-msg msg event-time)))
 
 (def to-server (a/chan))
 
@@ -106,6 +107,7 @@
               ;; handle messages going to the client
               to-player (if (= ( :msg msg ) :quit)
                           (do
+                            (>! ws-channel (mk-player-msg :quit -1))
                             ;; quit!
                             (reset! quit? true)
                             (swap! players dissoc id ))
