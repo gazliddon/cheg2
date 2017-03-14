@@ -22,6 +22,8 @@
           (recur start (System/nanoTime)))))
     c))
 
+
+
 (def all-players (atom []))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -75,11 +77,13 @@
 (defn msg-player! [player msg event-time]
   (a/put! (:to-player player){:msg  msg  :event-time event-time}))
 
+(def to-server (a/chan))
+
 (defn broadcast! [msg event-time]
   (dorun
     (->
-      (fn [p]
-        (msg-player! p {:time event-time} event-time))
+      (fn [[k p]]
+        (msg-player! p msg event-time))
       (map @players))))
 
 (defn add-player! [{:keys [id ws-channel ] :as player} event-time]
@@ -110,17 +114,15 @@
 
     player))
 
-(def to-server (a/chan))
 
 (defn connection [{:keys [ws-channel] :as req}]
-  (let [player (add-player! (mk-player req))]
-      (msg-player! player :joined 0)))
+  (let [player (add-player! (mk-player req) 0)]
+    (println "here I am 3!")
+    (msg-player! player :joined 0)))
 
 
 (defn stop-server! []
   (when-not (nil? @server)
-    ;; graceful shutdown: wait 300ms for existing requests to be finished
-    ;; :timeout is optional, when no timeout, stop immediately
     (@server :timeout 300)
     (reset! server nil)))
 
@@ -129,12 +131,18 @@
   (reset! server (run-server (-> handler wrap-websocket-handler) {:port 6502})))
 
 (comment 
-  (start-server! connection)
-  (stop-server!))
+  (start-server! #'connection)
+  (stop-server!)
+  (go
+    (let [t-chan (timer 500)]
+      (dotimes [n 10 ]
+        (broadcast! :time (:time (<! t-chan))))
+      )
+    ) 
+  )
 
 (defn -main [& args]
-  (println "here I am!")
-  )
+  (println "here I am!"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
