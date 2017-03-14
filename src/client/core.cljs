@@ -8,6 +8,9 @@
 
 (enable-console-print!)
 
+(defn server-msg [typ msg]
+  {:type typ
+   :msg msg } )
 
 (defn conn []
   (go
@@ -15,7 +18,7 @@
       (if error
         (println (str "Error " error))
         (do
-          (>! ws-channel "player joined")
+          (>! ws-channel (server-msg :join "I joined!"))
           (loop []
             (let [msg (<! ws-channel)]
               (when msg
@@ -45,8 +48,8 @@
    (swap! app-state update-in [:__figwheel_counter] inc)
 )
 
-
 (defn id-ize   [v] (str "#" v))
+
 (defn by-id
   ( [v] (-> (id-ize v) (dommy/sel1)) )
   ( [v b] (->> (id-ize v) (dommy/sel1 b)) )

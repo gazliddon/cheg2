@@ -22,7 +22,38 @@
           (recur start (System/nanoTime)))))
     c))
 
+(defprotocol IServer
+  (start! [this])
+  (stop! [this])
+  (on-connect! [this req] )
+  (on-disconnect! [this client])
+  (on-msg! [this client])
+  (broadcast-msg! [this client msg]) 
+  (send-msg! [this client msg])
+  (disconnect-client! [this client]))
 
+(comment defrecord Server []
+  (start! [this]
+    (->
+      this
+      stop!
+      (fn [this]
+        (reset! (:instance this) (run-server (-> (fn [x]) wrap-websocket-handler) {:port 6502})))))
+
+  (stop! [this]
+    (let [server (or (:instance this) (atom nil))]
+      (when-not (nil? @server)
+        (@server :timeout 300)
+        (reset! server nil)))
+    (assoc :instance server))
+
+  (on-connect! [this req] )
+  (on-disconnect! [this client])
+  (on-msg! [this client])
+  (broadcast-msg! [this client msg]) 
+  (send-msg! [this client msg])
+  (disconnect-client! [this client]))
+ 
 
 (def all-players (atom []))
 
@@ -68,6 +99,7 @@
 
 (defn mk-player [{:keys [ws-channel] :as req}]
   {:type :player
+   :last-ping -1
    :remote (:remote-addr req)
    :id (keyword-uuid)
    :ws-channel ws-channel })
@@ -87,40 +119,54 @@
         (msg-player! p msg event-time))
       (map @players))))
 
+
+(defn valid-join-msg? [msg]
+  (and msg
+       (= (:type msg) :join )))
+
+(defn get-player [{:keys [id ws-channel ] :as player} timeout]
+  player
+  )
+
 (defn add-player! [{:keys [id ws-channel ] :as player} event-time]
+
+  (println "add-player!")
+
   (let [to-player (a/chan)
         player (assoc player
                       :to-player to-player) ]
     (go
-      (swap! players assoc id player)
+      (let [player (get-player player 1000)]
+        (println "i have a player")
 
-      (let [quit? (atom false)]
+        (swap! players assoc id player)
 
-        (loop []
-          (let [[msg p] (a/alts! [ws-channel to-player])]
-            (condp = p
-              ;; handle messages coming from the client
-              ws-channel (if (nil? msg)
-                           (msg-player! player :quit 0)
-                           (comment "handle the msg here"))
+        (let [quit? (atom false)]
+          ( loop []
+            (let [[msg p] (a/alts! [ws-channel to-player])]
+              (condp = p
+                ;; handle messages coming from the client
+                ws-channel (if (nil? msg)
+                             (msg-player! player :quit 0)
+                             (pp/pprint msg)
+                             )
 
-              ;; handle messages going to the client
-              to-player (if (= ( :msg msg ) :quit)
-                          (do
-                            (>! ws-channel (mk-player-msg :quit -1))
-                            ;; quit!
-                            (reset! quit? true)
-                            (swap! players dissoc id ))
-                          (>! ws-channel msg))))
-          (when-not @quit? (recur)))))
+                ;; handle messages going to the client
+                to-player (if (= ( :msg msg ) :quit)
+                            (do
+                              (>! ws-channel (mk-player-msg :quit 0))
+                              ;; quit!
+                              (reset! quit? true)
+                              (swap! players dissoc id ))
+                            (>! ws-channel msg))))
+            (when-not @quit? (recur))))))))
 
-    player))
 
 
 (defn connection [{:keys [ws-channel] :as req}]
-  (let [player (add-player! (mk-player req) 0)]
-    (println "here I am 3!")
-    (msg-player! player :joined 0)))
+  (do
+    (println (str "connection made " ))
+    (let [player (add-player! (mk-player req) 0)])))
 
 
 (defn stop-server! []
@@ -138,13 +184,11 @@
   (go
     (let [t-chan (timer 500)]
       (dotimes [n 10 ]
-        (broadcast! :time (:time (<! t-chan))))
-      )
-    ) 
-  )
+        (broadcast! :time (:time (<! t-chan))))))) 
 
 (defn -main [& args]
   (println "here I am!"))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
