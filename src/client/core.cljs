@@ -1,33 +1,60 @@
 (ns client.core
+  
   (:require
+
+  [goog.dom :as gdom]
+  [om.next :as om :refer-macros [defui]]
+  [om.dom :as dom] 
+
+
     [cljs.core.async :refer [chan <! >! put! close! timeout]]
     [chord.client :refer [ws-ch]]
     [hipo.core              :as hipo  :include-macros true]
     [dommy.core             :as dommy :include-macros true]  )
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
+(def objs (atom []))
+
+(def t (atom 0))
+
 (enable-console-print!)
 
-(defn server-msg [typ msg]
-  {:type typ
-   :msg msg } )
+(defn mk-player-msg [typ payload event-time]
+  {:type typ :payload payload  :event-time event-time})
+
+
+(defmulti handle-msg! :type)
+
+
+(defmethod handle-msg! :objs [msg]
+  (reset! objs (:payload msg)))
+
+
+(defmethod handle-msg! :time [msg]
+  (reset! t (:event-time msg)))
 
 (defn conn []
   (go
     (let [{:keys [ws-channel error] :as k} (<! (ws-ch "ws://localhost:6502"))]
-      (if error
-        (println (str "Error " error))
-        (do
-          (>! ws-channel (server-msg :join "I joined!"))
-          (loop []
-            (let [msg (<! ws-channel)]
-              (when msg
-                (println (str "from server: " msg))
-                (recur)))))
 
+      (if error
+
+        (println (str "error: " error))
+
+        (do
+          (println (str "connected to server " k))
+
+          (>! ws-channel (mk-player-msg :joined "I joined!" 0))
+
+          (loop []
+            (let [{:keys [message event-time] :as msg} (<! ws-channel)]
+              (when msg
+                (handle-msg! message)
+                (recur)))))
         ))))
 
 (conn)
+(println @objs)
 
 ;; =============================================================================
 ;; {{{ hey! maths!
@@ -135,7 +162,6 @@
 ;; =============================================================================
 
 
-
 (defn is-active? [{:keys [start-time duration]} t]
   (and (>= t start-time) (< t (+ start-time duration))))
 
@@ -150,18 +176,6 @@
         new-pos [(+ x (* 100 (cos01 (* 3 t )))) y] ]
     (square ctx new-pos [30 30] col) ))
 
-(def objs
-  [{:type :frutz
-    :start-time 1.5
-    :duration 5
-    :pos [10 10]
-    :col [255 0 0] } 
-
-   {:type :frutz
-    :start-time 0
-    :duration 5
-    :pos [100 30]
-    :col [255 0 255]}])
 
 (defn draw-objs
   "convert these objs into a draw list"
@@ -196,11 +210,6 @@
 (defn mk-canvas [ctx w h]
   (->Canvas ctx w h))
 
-
-(def x (atom 0))
-
-(def t (atom 0))
-
 (defn update-time! [dt]
   (let [new-t (mod (+ dt @t) 5) ]
     (reset! t new-t)))
@@ -212,7 +221,7 @@
         new-t (mod now 5)]
     (doall
       (clear ctx col)
-      (draw-objs objs new-t ctx ))))
+      (draw-objs @objs @t ctx ))))
 
 (defn main []
   (let [w 400
@@ -223,9 +232,7 @@
         inf (mk-canvas ctx w h) ]
     (animate! (fn [timer]
                 (update! inf timer)
-                )))
-  )
+                ))))
 
 (main)
-
 

@@ -90,6 +90,19 @@
 ;; Server
 
 
+(def objs
+  [{:type :frutz
+    :start-time 1.5
+    :duration 5
+    :pos [10 10]
+    :col [255 0 0] } 
+
+   {:type :frutz
+    :start-time 0
+    :duration 5
+    :pos [100 30]
+    :col [255 0 255]}])
+
 (defonce server (atom nil))
 
 (def players (atom {}))
@@ -104,19 +117,20 @@
    :id (keyword-uuid)
    :ws-channel ws-channel })
 
-(defn mk-player-msg [msg event-time]
-  {:msg  msg  :event-time event-time})
+(defn mk-player-msg [typ payload event-time]
+  {:type typ :payload payload  :event-time event-time})
 
-(defn msg-player! [player msg event-time]
-  (a/put! (:to-player player) (mk-player-msg msg event-time)))
+(defn msg-player! [player typ payload event-time]
+  (a/put! (:to-player player) (mk-player-msg typ payload event-time)))
 
 (def to-server (a/chan))
 
-(defn broadcast! [msg event-time]
+
+(defn broadcast! [typ payload event-time]
   (dorun
     (->
       (fn [[k p]]
-        (msg-player! p msg event-time))
+        (msg-player! p typ payload event-time))
       (map @players))))
 
 
@@ -147,21 +161,18 @@
               (condp = p
                 ;; handle messages coming from the client
                 ws-channel (if (nil? msg)
-                             (msg-player! player :quit 0)
-                             (pp/pprint msg)
-                             )
+                             (msg-player! player :quit [] 0)
+                             (pp/pprint msg))
 
                 ;; handle messages going to the client
                 to-player (if (= ( :msg msg ) :quit)
                             (do
-                              (>! ws-channel (mk-player-msg :quit 0))
+                              (>! ws-channel (mk-player-msg :quit [] 0))
                               ;; quit!
                               (reset! quit? true)
                               (swap! players dissoc id ))
                             (>! ws-channel msg))))
             (when-not @quit? (recur))))))))
-
-
 
 (defn connection [{:keys [ws-channel] :as req}]
   (do
@@ -178,13 +189,21 @@
   (stop-server!)
   (reset! server (run-server (-> handler wrap-websocket-handler) {:port 6502})))
 
+
 (comment 
+  (broadcast! :objs [] -1)
+
   (start-server! #'connection)
   (stop-server!)
+
   (go
-    (let [t-chan (timer 500)]
-      (dotimes [n 10 ]
-        (broadcast! :time (:time (<! t-chan))))))) 
+    (let [t-chan (timer 17)]
+      (dotimes [n 1000 ]
+        (let [t (:time (<! t-chan) )]
+          (broadcast! :objs objs t)
+          (broadcast! :time [] t)))))
+  
+  )
 
 (defn -main [& args]
   (println "here I am!"))

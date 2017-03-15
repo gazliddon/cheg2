@@ -17,6 +17,8 @@
                  [jarohen/chord "0.8.1"]
                  [compojure "1.5.2"]
 
+                 [ org.omcljs/om "1.0.0-alpha34"] 
+
                  [ring-middleware-format "0.7.2"]
                  [ring "1.5.1"]
 
@@ -56,7 +58,7 @@
                ;; production. You can build this with:
                ;; lein cljsbuild once min
                {:id "min"
-                :source-paths ["src"]
+                :source-paths ["src/client"]
                 :compiler {:output-to "resources/public/js/compiled/client.js"
                            :main client.core
                            :optimizations :advanced
