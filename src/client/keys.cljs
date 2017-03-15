@@ -28,12 +28,12 @@
 (def FK-8     (->Key "function key 8" ))
 (def FK-9     (->Key "function key 9" ))
 
-(def K-UP    (->Key "cursor up" ))
-(def K-DOWN  (->Key "cursor down" ))
-(def K-LEFT  (->Key "cursor left" ))
-(def K-RIGHT (->Key "cursor right" ))
-(def K-SPACE (->Key "space" ))
-(def K-CR    (->Key "carriage return" ))
+(def K-UP    (->Key "ArrowUp" ))
+(def K-DOWN  (->Key "ArrowDown" ))
+(def K-LEFT  (->Key "ArrowLeft" ))
+(def K-RIGHT (->Key "ArrowRight" ))
+(def K-SPACE (->Key " " ))
+(def K-CR    (->Key "Enter" ))
 
 (defprotocol IKeyboard
   (init! [_])
@@ -46,8 +46,8 @@
 
 (def default-key-state (KeyState. false false false false))
 
-(defn get-key-state [key-states key-code]
-  (get key-states key-code default-key-state))
+; (defn get-key-state [key-states key-code]
+;   (get key-states key-code default-key-state))
 
 (defn generate-new-key-record [new-state {:keys [state last-state pressed released]}]
   (KeyState. new-state state (and (not state) new-state) (and state (not new-state))))
