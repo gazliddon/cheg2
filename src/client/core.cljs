@@ -1,13 +1,16 @@
 (ns client.core
-  
+
   (:require
 
-  [goog.dom :as gdom]
-  [om.next :as om :refer-macros [defui]]
-  [om.dom :as dom] 
+
+    [goog.events :as events]
+
+    [goog.dom :as gdom]
+    [om.next :as om :refer-macros [defui]]
+    [om.dom :as dom] 
 
 
-    [cljs.core.async :refer [chan <! >! put! close! timeout]]
+    [cljs.core.async :refer [chan <! >! put! close! timeout] :as a]
     [chord.client :refer [ws-ch]]
     [hipo.core              :as hipo  :include-macros true]
     [dommy.core             :as dommy :include-macros true]  )
@@ -19,12 +22,12 @@
 
 (enable-console-print!)
 
+
 (defn mk-player-msg [typ payload event-time]
   {:type typ :payload payload  :event-time event-time})
 
 
 (defmulti handle-msg! :type)
-
 
 (defmethod handle-msg! :objs [msg]
   (reset! objs (:payload msg)))
@@ -158,6 +161,69 @@
   (reset [this])
   (clear [this col])
   (square [this xy wh col]))
+
+;; =============================================================================
+
+;; Event -> channel stuff
+
+(def deaf! events/removeAll)
+
+(defn listen!
+  ([ev f] 
+   (let [ch (chan)]
+     (events/listen (.-body js/document)
+                    ev
+                    #(put! ch (f %)))
+     ch))
+  ([ev] 
+   (listen! ev identity)))
+
+;; Now keyboard events
+(def keyup-events
+  (.-KEYUP events/EventType))
+
+(def keydown-events
+  (.-KEYDOWN events/EventType))
+
+(defn to-key [ev]
+ (.-key (.-event_ ev)) )
+
+;; listen to a type of key event
+(defn listen-key-ev![ev-type id]
+ (->>
+    (fn [ev]
+      {:event id
+       :key (to-key ev) }
+      )
+    (listen! ev-type)) )
+
+;; Listen to up / down events
+;; and merge them into one stream
+(defn listen-keys! []
+  (a/merge [
+           (listen-key-ev! keydown-events :keydown) 
+           (listen-key-ev! keyup-events :keyup) 
+            ]))
+
+(defn deaf-keys! []
+  (deaf! (.-body js/document) keydown-events)
+  (deaf! (.-body js/document) keyup-events))
+
+(go
+
+  (deaf-keys!)
+
+  (println "about to k listen")
+
+  (let [kchan (listen-keys!)]
+
+    (loop []
+      (let [kv (<! kchan)]
+        (println kv))
+
+      (recur))
+    )
+  )
 
 ;; =============================================================================
 
