@@ -2,6 +2,7 @@
 
   (:require
 
+    [client.keys :as k]
 
     [goog.events :as events]
 
@@ -14,6 +15,7 @@
     [chord.client :refer [ws-ch]]
     [hipo.core              :as hipo  :include-macros true]
     [dommy.core             :as dommy :include-macros true]  )
+
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
 (def objs (atom []))
@@ -209,21 +211,25 @@
   (deaf! (.-body js/document) keydown-events)
   (deaf! (.-body js/document) keyup-events))
 
-(go
+(comment
+  (go
 
-  (deaf-keys!)
+    (deaf-keys!)
 
-  (println "about to k listen")
+    (println "about to k listen")
 
-  (let [kchan (listen-keys!)]
+    (let [kchan (listen-keys!)]
 
-    (loop []
-      (let [kv (<! kchan)]
-        (println kv))
+      (loop []
+        (let [kv (<! kchan)]
+          (println kv))
 
-      (recur))
-    )
+        (recur))
+      )
+    ) 
   )
+
+
 
 ;; =============================================================================
 

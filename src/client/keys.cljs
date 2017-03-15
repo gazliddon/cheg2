@@ -4,6 +4,8 @@
 
 ;; Virtual key defs, up to the host to tie these
 ;; to physical keys
+;; Kind of bad, these are google closure string names now
+;; should be a separate file
 
 (def K-A     (->Key "a" ))
 
@@ -79,8 +81,7 @@
         (get-key-state @key-atom key-code))
 
       (get-key-states [_]
-        @key-atom
-        )
+        @key-atom)
 
       (update! [_]
         (reset! key-atom (update-keys @key-atom))) 
