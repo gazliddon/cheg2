@@ -154,9 +154,18 @@
 
 (defprotocol IRender
   (dims [_])
+  (resize! [_ dims])
   (reset-transform! [this])
   (clear-buffer! [this col])
   (square! [this xy wh col]))
+;; =============================================================================
+;; html bullshit
+
+(defn get-win-dims
+  "get the dimension of the current window"
+  []
+  [(.-innerWidth js/window)  
+   (.-innerHeight js/window)  ])
 
 ;; =============================================================================
 
@@ -167,7 +176,7 @@
 (defn listen!
   ([ev xf] 
    (let [ch (chan 1 xf)]
-     (events/listen (.-body js/document) ev #(put! ch %))
+     (events/listen js/window ev #(put! ch %))
      ch))
   ([ev] 
    (listen! ev (map identity))))
@@ -175,6 +184,19 @@
 ;; Now keyboard events
 (def keyup-events (.-KEYUP events/EventType))
 (def keydown-events (.-KEYDOWN events/EventType))
+(def resize-events (.-RESIZE events/EventType))
+
+(defn ev->resizer [ev]
+  {:type :resize
+   :payload (get-win-dims) })
+
+(comment
+  (go
+    (let [rch (listen! resize-events (map ev->resizer))
+          ev (<! rch) ]
+      (println "got an event")
+      (println ev)
+      )))
 
 (defn to-key [ev]
   (->
@@ -187,7 +209,8 @@
 
 (defn listen-key-ev![ev-type id]
   (listen! ev-type (comp
-                     (map #({:event id
+                     (map #({:type :keys
+                             :event id
                              :key (to-key %) }))
                      (dedupe))))
 
@@ -234,8 +257,15 @@
       (map objs))))
 
 
+
+
 (defrecord Canvas [ctx w h]
+
   IRender
+
+  (resize! [this [w h]]
+    (assoc this :w w :h h))
+
   (dims [_]
     [w h])
 
@@ -266,6 +296,7 @@
         (recur (conj coll v))))))
 
 (defprotocol IIo
+  (command-chan [_])
   (renderer [this])
   (keyboard [this])
   (timer [this]))
@@ -273,32 +304,43 @@
 (defprotocol IGameLoop
   )
 
-(defn get-win-dims []
-  [(.-innerWidth js/window)  
-   (.-innerHeight js/window)  ])
+(defn mk-listeners []
+  (do
+    (deaf! resize-events)
+    (listen! resize-events) 
+    )
+  )
 
 (defn mk-html-io 
   ([id w h]
    (do
+     ;; get rid of any kids
+     (dommy/clear! (dommy/sel1 id))
+
      (let [gdiv (dommy/sel1 id)
            canvas (add-canvas! "#canvas" gdiv w h) 
            ctx   (.getContext (dommy/sel1 "#canvas") "2d")
-           r (->Canvas ctx w h)
+           rr (atom (->Canvas ctx w h))
            key-ch (listen-keys!)]
-
        (reify
-         IGameLoop
+         IRender
+         (resize! [this wh]
+           (reset! rr (resize! @rr wh)))
 
          IIo
+         (command-chan [this]
+           (println "fuck it"))
+
          (renderer [this]
-           r)
+           @rr)
 
          (keyboard [this]
            (ch->coll key-ch))
 
          (timer [this]
-           0))))
-   ) 
+           0))  
+       ))) 
+
   ([id]
    (let [[w h] (get-win-dims)]
      (mk-html-io id w h)))
@@ -339,7 +381,7 @@
 
 (defn main []
   (do
-    (let [io (mk-html-io "#game")]
+    (let [io (mk-html-io "#game") ]
       (animate!
         (fn [timer]
           (update! io timer)))
@@ -347,5 +389,19 @@
     )
   )
 
+
+
+(defn game [io]
+  (loop [io io]
+
+    (let [io-ch (command-chan io)
+          [msg port] (a/alts! (io-ch))]
+      (recur
+        (case (:type msg)
+        :resize (resize! io (:payload msg))
+        :network (do
+                   io)
+        :animate (do
+                   io))))))
 (main)
 
