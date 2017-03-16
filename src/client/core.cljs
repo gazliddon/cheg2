@@ -11,7 +11,7 @@
     [om.dom :as dom] 
 
 
-    [cljs.core.async :refer [chan <! >! put! close! timeout] :as a]
+    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
     [chord.client :refer [ws-ch]]
     [hipo.core              :as hipo  :include-macros true]
     [dommy.core             :as dommy :include-macros true]  )
@@ -23,7 +23,6 @@
 (def t (atom 0))
 
 (enable-console-print!)
-
 
 (defn mk-player-msg [typ payload event-time]
   {:type typ :payload payload  :event-time event-time})
@@ -59,7 +58,6 @@
         ))))
 
 (conn)
-(println @objs)
 
 ;; =============================================================================
 ;; {{{ hey! maths!
@@ -80,7 +78,7 @@
    (swap! app-state update-in [:__figwheel_counter] inc)
 )
 
-(defn id-ize   [v] (str "#" v))
+(defn id-ize  [v] (str "#" v))
 
 (defn by-id
   ( [v] (-> (id-ize v) (dommy/sel1)) )
@@ -143,26 +141,22 @@
 ;; =============================================================================
 ;; {{{ Canvas BS
 (defn add-canvas! [id el width height]
-  (let [new-el (hipo/create [:canvas#canvas {:width width :height height}])]
+  (let [new-el (hipo/create [:canvas#canvas
+                             {:style {:position "absolute"
+                                      :left "0px"
+                                      :right "0px"}
+                              :width width
+                              :height height}])]
     (.appendChild el new-el)))
-
-
-(defn clear-canvas!
-  "Clears the canvas"
-  [ctx width height color]
-  (.save ctx)
-  (set! (.-fillStyle ctx) (apply to-color color))
-  (.resetTransform ctx 1 0 0 1 0 0)
-  (.fillRect ctx 0 0 width height)
-  (.restore ctx))
 
 ;;; }}}
 
 
 (defprotocol IRender
-  (reset [this])
-  (clear [this col])
-  (square [this xy wh col]))
+  (dims [_])
+  (reset-transform! [this])
+  (clear-buffer! [this col])
+  (square! [this xy wh col]))
 
 ;; =============================================================================
 
@@ -171,68 +165,45 @@
 (def deaf! events/removeAll)
 
 (defn listen!
-  ([ev f] 
-   (let [ch (chan)]
-     (events/listen (.-body js/document)
-                    ev
-                    #(put! ch (f %)))
+  ([ev xf] 
+   (let [ch (chan 1 xf)]
+     (events/listen (.-body js/document) ev #(put! ch %))
      ch))
   ([ev] 
-   (listen! ev identity)))
+   (listen! ev (map identity))))
 
 ;; Now keyboard events
-(def keyup-events
-  (.-KEYUP events/EventType))
-
-(def keydown-events
-  (.-KEYDOWN events/EventType))
+(def keyup-events (.-KEYUP events/EventType))
+(def keydown-events (.-KEYDOWN events/EventType))
 
 (defn to-key [ev]
- (.-key (.-event_ ev)) )
+  (->
+    ev
+    (.-event_)
+    (.-key)
+    (keyword)))
 
 ;; listen to a type of key event
+
 (defn listen-key-ev![ev-type id]
- (->>
-    (fn [ev]
-      {:event id
-       :key (to-key ev) }
-      )
-    (listen! ev-type)) )
+  (listen! ev-type (comp
+                     (map #({:event id
+                             :key (to-key %) }))
+                     (dedupe))))
 
 ;; Listen to up / down events
 ;; and merge them into one stream
-(defn listen-keys! []
-  (a/merge [
-           (listen-key-ev! keydown-events :keydown) 
-           (listen-key-ev! keyup-events :keyup) 
-            ]))
-
 (defn deaf-keys! []
   (deaf! (.-body js/document) keydown-events)
   (deaf! (.-body js/document) keyup-events))
 
-(comment
-  (go
-
+(defn listen-keys! []
+  (do
     (deaf-keys!)
-
-    (println "about to k listen")
-
-    (let [kchan (listen-keys!)]
-
-      (loop []
-        (let [kv (<! kchan)]
-          (println kv))
-
-        (recur))
-      )
-    ) 
-  )
-
-
+    (a/merge [(listen-key-ev! keydown-events :keydown) 
+              (listen-key-ev! keyup-events :keyup)])))
 
 ;; =============================================================================
-
 
 (defn is-active? [{:keys [start-time duration]} t]
   (and (>= t start-time) (< t (+ start-time duration))))
@@ -246,8 +217,10 @@
 (defmethod draw-obj :frutz [{:keys [pos col]} t ctx]
   (let [[x y] pos
         new-pos [(+ x (* 100 (cos01 (* 3 t )))) y] ]
-    (square ctx new-pos [30 30] col) ))
+    (square! ctx new-pos [30 30] col) ))
 
+(defmethod draw-obj :player [{:keys [pos col]} t ctx]
+  (square! ctx pos [30 30] col))
 
 (defn draw-objs
   "convert these objs into a draw list"
@@ -261,17 +234,18 @@
       (map objs))))
 
 
-
 (defrecord Canvas [ctx w h]
   IRender
+  (dims [_]
+    [w h])
 
-  (reset [this]
+  (reset-transform! [this]
     (.resetTransform ctx 1 0 0 1 0 0))
 
-  (clear [this color]
-    (square this [0 0] [w h] color))
+  (clear-buffer! [this color]
+    (square! this [0 0] [w h] color))
 
-  (square [this [x y] [w h] color]
+  (square! [this [x y] [w h] color]
     (.save ctx)
     (set! (.-fillStyle ctx) (apply to-color color))
     (.resetTransform ctx 1 0 0 1 0 0)
@@ -279,32 +253,99 @@
     (.restore ctx)  
     this) )
 
-(defn mk-canvas [ctx w h]
-  (->Canvas ctx w h))
 
 (defn update-time! [dt]
   (let [new-t (mod (+ dt @t) 5) ]
-    (reset! t new-t)))
+    (reset! t new-t))) 
 
+(defn ch->coll [ch]
+  (loop [coll nil]
+    (let [v (a/poll! ch)]
+      (if-not v
+        coll
+        (recur (conj coll v))))))
 
-(defn update! [ctx timer]
-  (let [now (/ ( now timer ) 1000    )
-        col [(int (* 30 (cos01 now) )) 0 0]
-        new-t (mod now 5)]
-    (doall
-      (clear ctx col)
-      (draw-objs @objs @t ctx ))))
+(defprotocol IIo
+  (renderer [this])
+  (keyboard [this])
+  (timer [this]))
+
+(defprotocol IGameLoop
+  )
+
+(defn get-win-dims []
+  [(.-innerWidth js/window)  
+   (.-innerHeight js/window)  ])
+
+(defn mk-html-io 
+  ([id w h]
+   (do
+     (let [gdiv (dommy/sel1 id)
+           canvas (add-canvas! "#canvas" gdiv w h) 
+           ctx   (.getContext (dommy/sel1 "#canvas") "2d")
+           r (->Canvas ctx w h)
+           key-ch (listen-keys!)]
+
+       (reify
+         IGameLoop
+
+         IIo
+         (renderer [this]
+           r)
+
+         (keyboard [this]
+           (ch->coll key-ch))
+
+         (timer [this]
+           0))))
+   ) 
+  ([id]
+   (let [[w h] (get-win-dims)]
+     (mk-html-io id w h)))
+  
+  )
+
+(def player (atom {:pos [10 10]}))
+
+(def k->dir {
+   :z [-1 0]
+   :x [ 1 0]
+   :k [0 -1]
+   :m [0 1] })
+
+(defn addv2 [[x y] [x1 y1]] [(+ x x1) (+ y y1)])
+
+(defn keys->player [player key-coll]
+  (->
+    (fn [res {:keys [event key]}]
+      (if (= event :keydown)
+        (let [v (get k->dir key [0 0])
+              p (addv2 (:pos res) v) ]
+          (assoc res :pos p))
+        res))
+    (reduce player key-coll)))
+
+(defn update! [io timer ]
+  (let [renderer (renderer io)
+        now (/ ( now timer ) 1000    )
+        col [(int (* 255 (cos01 (* 10 now )) )) 0 0]
+        new-t (mod now 5)
+        new-player (keys->player @player (keyboard io)) ]
+    (do
+      (clear-buffer! renderer  col)
+      (draw-objs @objs @t renderer  )
+      (square! renderer (:pos new-player) [10 10] [255 255 255] )
+      (reset! player new-player))))
 
 (defn main []
-  (let [w 400
-        h 400
-        gdiv (dommy/sel1 "#game")  
-        canvas (add-canvas! "#canvas" gdiv w h)
-        ctx   (.getContext (dommy/sel1 "#canvas") "2d")
-        inf (mk-canvas ctx w h) ]
-    (animate! (fn [timer]
-                (update! inf timer)
-                ))))
+  (do
+    (let [io (mk-html-io "#game")]
+      (animate!
+        (fn [timer]
+          (update! io timer)))
+      )
+    )
+  )
 
 (main)
 

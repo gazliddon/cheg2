@@ -192,18 +192,19 @@
 
 (comment 
   (broadcast! :objs [] -1)
-
   (start-server! #'connection)
-  (stop-server!)
+  (stop-server!))
 
+(defn test-it []
   (go
-    (let [t-chan (timer 17)]
-      (dotimes [n 1000 ]
-        (let [t (:time (<! t-chan) )]
-          (broadcast! :objs objs t)
-          (broadcast! :time [] t)))))
-  
+      (let [t-chan (timer 17)]
+        (dotimes [n 1000 ]
+          (let [t (:time (<! t-chan) )]
+            (broadcast! :objs objs t)
+            (broadcast! :time [] t)))))
   )
+
+
 
 (defn -main [& args]
   (println "here I am!"))
