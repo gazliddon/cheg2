@@ -19,6 +19,8 @@
 
                  [ org.omcljs/om "1.0.0-alpha34"] 
 
+                 [com.stuartsierra/component "0.3.2"]
+
                  [ring-middleware-format "0.7.2"]
                  [ring "1.5.1"]
 
