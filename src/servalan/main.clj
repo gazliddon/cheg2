@@ -67,8 +67,7 @@
     :app (component/using (map->App {}) 
                           [:server ])))
 
-(def config {:port 6502 
-             })
+(def config {:port 6502})
 
 (def sys (mk-system config))
 
@@ -79,6 +78,7 @@
 
 (defn stop! []
     (alter-var-root #'sys component/stop))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

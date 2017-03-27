@@ -115,28 +115,13 @@
 
   (println "starting a conn process")
 
-  (println req)
-
   (let [id :poo
         {:keys [ws-channel com-channel stop-ch] :as conn} (mk-connection req ) ]
-
-  (println "pre go! ")
 
     (go
       (let [ keep-running (atom true) ]
 
         (while @keep-running
-
-          (println "pre alts")
-
-          (doseq [cc [stop-ch
-                                  ws-channel
-                                  (a/timeout 500000)
-                                  com-channel]]
-            (println (class cc))
-            
-            )
-           
 
           (let [[msg p] (a/alts! [stop-ch
                                   ws-channel
@@ -144,8 +129,6 @@
                                   com-channel])
 
                 event-fn (fn [ev] (fsm/event! conn ev {:msg msg :conn conn })) ]
-
-            (println "about to handle message")
 
             ;; nil msg means a timeout
             (if (nil? msg)

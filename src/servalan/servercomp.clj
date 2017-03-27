@@ -1,8 +1,8 @@
 (ns servalan.servercomp
   (:require 
 
-    [servalan.protocols.connections :as connections]
-    [servalan.protocols.connection :as connection]
+    [servalan.protocols.connections :as IConns]
+    [servalan.protocols.connection :as IConn]
     [servalan.connection :as c]
 
     [servalan.fsm :as fsm]
@@ -97,11 +97,11 @@
   nil)
 
 (defn- has-died? [conn]
-  (not (connection/is-connected? conn)))
+  (not (IConn/is-connected? conn)))
 
 ;; Dead filter transducer
 (def filter-the-dead 
-  (filter (fn [id conn] (not (connection/is-connected? conn)))))
+  (filter (fn [id conn] (not (IConn/is-connected? conn)))))
 
 (defn- has-connection? [connections id]
   (get connections id nil))
@@ -117,11 +117,11 @@
 
   (stop [c]
     (doto c
-      (connections/close-all!)
-      (connections/clean-up!))
+      (IConns/close-all!)
+      (IConns/clean-up!))
     c ) 
 
-  connections/IConnections
+  IConns/IConnections
 
   (clean-up! [this]
     (swap! connections-atom #(into {} filter-the-dead %))
@@ -129,29 +129,31 @@
 
   (add! [this conn]
     (do
-      (println conn)
-      (when-not (-> :id conn has-connection?)
+      (let [has-con (->>
+                      (:id conn)
+                      (has-connection? @connections-atom))]
+      (when-not has-con
         (swap! connections-atom assoc (:id conn) conn))
-      nil))
+      nil)))
 
   (send! [this id msg]
     (do
-      (call-connection! @connections-atom id connection/command! msg)
+      (call-connection! @connections-atom id IConn/command! msg)
       nil))
 
   (close! [this id]
     (do
-      (call-connection! @connections-atom id connection/close!)
+      (call-connection! @connections-atom id IConn/close!)
       (swap! @connections-atom assoc id nil)
       nil))
 
   (broadcast! [this msg]
-    (call-connections! @connections-atom connection/command! msg))
+    (call-connections! @connections-atom IConn/command! msg))
 
   (close-all! [this]
     (do 
-      (call-connections! @connections-atom connection/close!)
-      (connections/clean-up! this)
+      (call-connections! @connections-atom IConn/close!)
+      (IConns/clean-up! this)
       nil)))
 
 (defn connections-component []
@@ -159,36 +161,29 @@
     { :connections-atom ( atom {} ) }))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn connection-handler [req ]
-  (c/mk-connection-process req))
-
-(defn- mk-server [port]
-  (run-server (-> #'connection-handler wrap-websocket-handler) {:port port}))
-
-(defrecord Server [port server joined-ch state]
+(defn- get-connections [this ]
+  (:connections this))
+(defrecord Server [port connections server-inst]
 
   component/Lifecycle
 
   (start [c]
-    (component/stop c)
-
-    (let [connections (:connections c)
-          _ (println connections)
-          handler (fn [req]
-                    (pp/pprint req)
+    (let [c (stop c)]
+     (let [handler (fn [req]
                     (let [conn (c/mk-connection-process req)]
-                      (connections/add! connections conn)))]
+                      (IConns/add! connections conn)))]
       (assoc c
              :state :running
-             :server (run-server handler {:port 6502}))))
+             :server-inst (run-server (-> handler wrap-websocket-handler) {:port 6502}))) ))
 
   (stop [c]
-    (do
-      (when server
-        (server :timeout 300)
+    (if server-inst
+      (do
+        (server-inst :timeout 300)
         (assoc c
-               :server nil
-               :state nil)))))
+               :server-inst nil
+               :state nil))
+      c)))
 
 (defn server-component [port] (map->Server {:port port}) )
 
