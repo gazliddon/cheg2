@@ -1,6 +1,6 @@
 (ns servalan.main
   (:require 
-    [servalan.servercomp :refer [server-component]]
+    [servalan.servercomp :refer [server-component connections-component]]
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
     [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
@@ -29,11 +29,21 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defmacro dochan [[binding chan] & body]
+  `(let [chan# ~chan]
+     (cljs.core.async.macros/go
+       (loop []
+         (if-let [~binding (cljs.core.async/<! chan#)]
+           (do
+             ~@body
+             (recur))
+           :done)))))
+      
+
 (defrecord App []
   component/Lifecycle
 
   (start [c]
-    ; (pp/pp c)
     c
     )
 
@@ -42,29 +52,20 @@
     )
   )
 
-(defrecord Connection [in-ch]
-  component/Lifecycle
-
-  (start [c]
-    c
-    )
-
-  (stop [c]
-    c
-    )
-  )
 
 (defn mk-system [{:keys [port ] :as config}]
   (component/system-map
 
-    :joined-ch (a/chan)
+    :connect-ch (a/chan)
+
+    :connections (connections-component) 
 
     :server (component/using
               (server-component port)
-              [:joined-ch])
+              [:connect-ch :connections])
 
     :app (component/using (map->App {}) 
-                          [:server])))
+                          [:server ])))
 
 (def config {:port 6502 
              })

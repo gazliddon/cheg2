@@ -1,8 +1,15 @@
 (ns servalan.servercomp
   (:require 
+
+    [servalan.protocols.connections :as connections]
+    [servalan.protocols.connection :as connection]
+    [servalan.connection :as c]
+
+    [servalan.fsm :as fsm]
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
     [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
+
     [org.httpkit.server :refer [run-server]]
     [com.stuartsierra.component :refer [start stop start-system stop-system]:as component] 
     [clojure.pprint :as pp])
@@ -71,86 +78,117 @@
 (defn msg-player! [player typ payload event-time]
   (a/put! (:to-player player) (mk-player-msg typ payload event-time)))
 
-(def to-server (a/chan))
 
 
-(defn broadcast! [typ payload event-time]
-  (dorun
-    (->
-      (fn [[k p]]
-        (msg-player! p typ payload event-time))
-      (map @players))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;;;;;;;;;
 
-(defn valid-join-msg? [msg]
-  (and msg
-       (= (:type msg) :join )))
+(defn- call-connection! [connections id method & payload]
+  (let [conn (get id connections)]
+    (when conn
+      (apply method conn payload)))
+  nil)
 
-(defn get-player [{:keys [id ws-channel ] :as player} timeout]
-  player
-  )
+(defn- call-connections!
+  [connections method & payload]
+  (doseq [[k conn] connections ]
+    (apply method conn payload))
+  nil)
 
-(defn add-player! [{:keys [id ws-channel ] :as player} event-time]
+(defn- has-died? [conn]
+  (not (connection/is-connected? conn)))
 
-  (println "add-player!")
+;; Dead filter transducer
+(def filter-the-dead 
+  (filter (fn [id conn] (not (connection/is-connected? conn)))))
 
-  (let [to-player (a/chan)
-        player (assoc player
-                      :to-player to-player) ]
-    (go
-      (let [player (get-player player 1000)]
-        (println "i have a player")
+(defn- has-connection? [connections id]
+  (get connections id nil))
 
-        (swap! players assoc id player)
+;;;;;;;;;;
 
-        (let [quit? (atom false)]
-          ( loop []
-            (let [[msg p] (a/alts! [ws-channel to-player])]
-              (condp = p
-                ;; handle messages coming from the client
-                ws-channel (if (nil? msg)
-                             (msg-player! player :quit [] 0)
-                             (pp/pprint msg))
-
-                ;; handle messages going to the client
-                to-player (if (= ( :msg msg ) :quit)
-                            (do
-                              (>! ws-channel (mk-player-msg :quit [] 0))
-                              ;; quit!
-                              (reset! quit? true)
-                              (swap! players dissoc id ))
-                            (>! ws-channel msg))))
-            (when-not @quit? (recur))))))))
-
-(defn connection [{:keys [ws-channel] :as req}]
-  (do
-    (println (str "connection made " ))
-    (let [player (add-player! (mk-player req) 0)])))
-
-(defn- mk-server [port]
-  (run-server (-> #'connection wrap-websocket-handler) {:port port}))
-
-(defn- mk-server' [{:keys [port] :as config}]
-  (println "starting test server")
-  (fn[a b]
-    (println "stopping test server")))
-
-(defrecord Server [port connections server joined-ch]
+(defrecord Connections [connections-atom]
 
   component/Lifecycle
 
   (start [c]
-    (println (str "joined ch " joined-ch  ))
-
-    (assoc c
-           :server (mk-server port)
-           :connections []))
+    (stop c))
 
   (stop [c]
-    (println "stop Server")
-    (server :timeout 300)
-    (assoc c :server nil))
-  )
+    (doto c
+      (connections/close-all!)
+      (connections/clean-up!))
+    c ) 
+
+  connections/IConnections
+
+  (clean-up! [this]
+    (swap! connections-atom #(into {} filter-the-dead %))
+    nil)
+
+  (add! [this conn]
+    (do
+      (println conn)
+      (when-not (-> :id conn has-connection?)
+        (swap! connections-atom assoc (:id conn) conn))
+      nil))
+
+  (send! [this id msg]
+    (do
+      (call-connection! @connections-atom id connection/command! msg)
+      nil))
+
+  (close! [this id]
+    (do
+      (call-connection! @connections-atom id connection/close!)
+      (swap! @connections-atom assoc id nil)
+      nil))
+
+  (broadcast! [this msg]
+    (call-connections! @connections-atom connection/command! msg))
+
+  (close-all! [this]
+    (do 
+      (call-connections! @connections-atom connection/close!)
+      (connections/clean-up! this)
+      nil)))
+
+(defn connections-component []
+  (map->Connections
+    { :connections-atom ( atom {} ) }))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn connection-handler [req ]
+  (c/mk-connection-process req))
+
+(defn- mk-server [port]
+  (run-server (-> #'connection-handler wrap-websocket-handler) {:port port}))
+
+(defrecord Server [port server joined-ch state]
+
+  component/Lifecycle
+
+  (start [c]
+    (component/stop c)
+
+    (let [connections (:connections c)
+          _ (println connections)
+          handler (fn [req]
+                    (pp/pprint req)
+                    (let [conn (c/mk-connection-process req)]
+                      (connections/add! connections conn)))]
+      (assoc c
+             :state :running
+             :server (run-server handler {:port 6502}))))
+
+  (stop [c]
+    (do
+      (when server
+        (server :timeout 300)
+        (assoc c
+               :server nil
+               :state nil)))))
 
 (defn server-component [port] (map->Server {:port port}) )
 
