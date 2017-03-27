@@ -25,7 +25,7 @@
   (handling-server-msg [this payload]))
 
 (def conn-state-table
-  {:client-message {none is-connecting
+  {:client-message {:none is-connecting
                     has-connected handling-client-msg }
 
    :server-message {has-connected handling-server-msg }
@@ -87,8 +87,16 @@
   fsm/IStateMachine
 
   (event! [this ev payload]
+
+    (println "Got an event!")
+    (println ev)
+    (println payload)
+    (println "")
+
     (let [old-state (fsm/get-state fsm)
           new-state (fsm/event! fsm ev payload) ]
+      (println (str old-state))
+      (println (str new-state))
       (when new-state
         (let [ev-record {:old-state old-state
            :state new-state
@@ -108,6 +116,7 @@
                     :stop-ch (chan)}))
 
 (defn mk-connection-process
+
   ;; Turn a ws request into a connection process
   ;; and return a connection record
 
@@ -125,12 +134,12 @@
 
           (let [[msg p] (a/alts! [stop-ch
                                   ws-channel
-                                  (a/timeout 500000)
                                   com-channel])
 
                 event-fn (fn [ev] (fsm/event! conn ev {:msg msg :conn conn })) ]
 
             ;; nil msg means a timeout
+
             (if (nil? msg)
 
               (event-fn :time-out)
