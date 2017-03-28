@@ -113,18 +113,25 @@
   component/Lifecycle
 
   (start [c]
-    (stop c))
+    (println "in startt")
+    (assoc c :connections-atom (atom {})))
 
   (stop [c]
-    (doto c
-      (IConns/close-all!)
-      (IConns/clean-up!))
-    c ) 
+    (do
+      (println "in stop")
+
+      (when (not=  (count @connections-atom) 0)
+        (println "destroying!")
+        (IConns/close-all! c)
+        (IConns/clean-up! c))
+
+      (reset! connections-atom {})  
+      c))
 
   IConns/IConnections
 
   (clean-up! [this]
-    (swap! connections-atom #(into {} filter-the-dead %))
+    (comment (swap! connections-atom #(into {} filter-the-dead %)) )
     nil)
 
   (add! [this conn]
@@ -157,8 +164,7 @@
       nil)))
 
 (defn connections-component []
-  (map->Connections
-    { :connections-atom ( atom {} ) }))
+  (->Connections[]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn- get-connections [this ]
@@ -179,7 +185,9 @@
   (stop [c]
     (if server-inst
       (do
+        (println "about to sotp server")
         (server-inst :timeout 300)
+        (println "done")
         (assoc c
                :server-inst nil
                :state nil))

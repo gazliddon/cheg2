@@ -1,5 +1,6 @@
 (ns servalan.main
   (:require 
+    [figwheel-sidecar.repl-api :as f]  
     [servalan.servercomp :refer [server-component connections-component]]
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
     [clj-uuid :as uuid]
@@ -23,6 +24,21 @@
           (put! c {:time (to-secs (- nt start) ) :dtime (to-secs dt )})
           (recur start (System/nanoTime)))))
     c))
+
+(defn fig-start
+  "This starts the figwheel server and watch based auto-compiler."
+  []
+ ;; this call will only work are long as your :cljsbuild and
+  ;; :figwheel configurations are at the top level of your project.clj
+  ;; and are not spread across different lein profiles
+
+  ;; otherwise you can pass a configuration into start-figwheel! manually
+  (f/start-figwheel!))
+
+(defn fig-stop
+  "Stop the figwheel server and watch based auto-compiler."
+  []
+  (f/stop-figwheel!))
 
 (defn -main [& args]
   (println "here I am!"))
@@ -76,12 +92,16 @@
 (defn start! []
     (alter-var-root #'sys component/start))
 
+
 (defn stop! []
     (alter-var-root #'sys component/stop))
 
+(comment
+  (start!)
+
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 
 

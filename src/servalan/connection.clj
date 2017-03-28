@@ -4,10 +4,6 @@
     [servalan.fsm :as fsm]
     [clojure.core.async :refer [<!! >!! <! >! put! go chan] :as a]  
     [clj-uuid :as uuid]
-    [chord.http-kit :refer [with-channel wrap-websocket-handler]]
-
-    [org.httpkit.server :refer [run-server]]
-    [com.stuartsierra.component :refer [start stop start-system stop-system]:as component] 
     [clojure.pprint :as pp])
   )
 
@@ -50,7 +46,6 @@
 
   (is-connecting [this payload]
     ;; check what this is if it's good then done!
-    (println "is connecting")
     (fsm/event! this :done payload))
 
   (has-connected [this payload]
@@ -89,9 +84,6 @@
   (event! [this ev payload]
 
     (println "Got an event!")
-    (println ev)
-    (println payload)
-    (println "")
 
     (let [old-state (fsm/get-state fsm)
           new-state (fsm/event! fsm ev payload) ]
@@ -115,8 +107,17 @@
                     :com-channel (chan)
                     :stop-ch (chan)}))
 
-(defn mk-connection-process
+(defmacro dochan [[binding chan] & body]
+  `(let [chan# ~chan]
+     (clojure.core.async/go
+       (loop []
+         (if-let [~binding (clojure.core.async/<! chan#)]
+           (do
+             ~@body
+             (recur))
+           :done)))))
 
+(defn mk-connection-process
   ;; Turn a ws request into a connection process
   ;; and return a connection record
 
@@ -124,35 +125,38 @@
 
   (println "starting a conn process")
 
-  (let [id :poo
-        {:keys [ws-channel com-channel stop-ch] :as conn} (mk-connection req ) ]
+  (let [id (-> (uuid/v4) str keyword)
 
-    (go
-      (let [ keep-running (atom true) ]
+        {:keys [ws-channel com-channel stop-ch] :as conn} (mk-connection req )
 
-        (while @keep-running
+        ev-fn (fn[ev msg] (fsm/event! conn ev {:msg msg :conn conn}))
 
-          (let [[msg p] (a/alts! [stop-ch
-                                  ws-channel
-                                  com-channel])
+        stop-fn (fn []
+                  (doseq [ch [ws-channel com-channel stop-ch]]
+                    (a/close! ch))) ]
 
-                event-fn (fn [ev] (fsm/event! conn ev {:msg msg :conn conn })) ]
+    (do
+      ;; pings
+      (dochan [_ ws-channel]
+              (<! (a/timeout 3000))
+              (>! ws-channel {:type :ping})
+              (ev-fn {} :sent-ping))
 
-            ;; nil msg means a timeout
+      ;; stop channel
+      (dochan [msg stop-ch]
+              (println "about to stop!")
+              (ev-fn msg :stop)
+              (stop-fn))
 
-            (if (nil? msg)
+      ;; from client
+      (dochan [msg ws-channel]
+              (ev-fn msg :client-message) )
 
-              (event-fn :time-out)
-
-              (condp = p
-                stop-ch          (do
-                                   (event-fn :stop)
-                                   (reset! keep-running false) )
-                ws-channel       (event-fn :client-message)
-                com-channel      (event-fn (:event msg))
-
-                (println "unhandled message"))
-              )))))
+      ;; from server / player
+      (dochan [msg com-channel]
+              (ev-fn msg (:event msg)))
+      )
+    
     conn))
 
 ;; Some tests

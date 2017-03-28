@@ -1,8 +1,4 @@
 (ns client.core
-  ;; Events
-
-
-
   (:require
     [client.protocols :as p] 
     [client.html :as html]
@@ -24,24 +20,42 @@
 
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
+
 (def objs (atom []))
 
 (def t (atom 0))
+
+(defonce state (atom {:server-time 0 
+                  :time 0 
+
+                  :pings {:last-ping 0 
+                          :last-pong 0    }
+
+                  }))
+
+(println state)
 
 (enable-console-print!)
 
 (defn mk-player-msg [typ payload event-time]
   {:type typ :payload payload  :event-time event-time})
 
+(do
 
-(defmulti handle-msg! :type)
+  (defmulti handle-msg! :type)
 
-(defmethod handle-msg! :objs [msg]
-  (reset! objs (:payload msg)))
+  (defmethod handle-msg! :objs [msg]
+    (reset! objs (:payload msg)))
 
+  (defmethod handle-msg! :time [msg]
+    (reset! t (:event-time msg)))
 
-(defmethod handle-msg! :time [msg]
-  (reset! t (:event-time msg)))
+  (defmethod handle-msg! :ping [msg]
+    (let [lp (-> :pings :last-ping @state)]
+      (swap! state assoc-in [:pings :last-ping] (inc lp)) ))
+
+  (defmethod handle-msg! :default [msg]
+    (println (str "unhandled msg" msg))))
 
 (defn conn []
   (go
