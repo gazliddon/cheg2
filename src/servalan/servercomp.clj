@@ -112,26 +112,22 @@
 
   component/Lifecycle
 
-  (start [c]
-    (println "in startt")
-    (assoc c :connections-atom (atom {})))
+  (start [this]
+    (if-not connections-atom
+      (assoc this :connections-atom (atom {})) 
+      this))
 
-  (stop [c]
-    (do
-      (println "in stop")
-
-      (when (not=  (count @connections-atom) 0)
-        (println "destroying!")
-        (IConns/close-all! c)
-        (IConns/clean-up! c))
-
-      (reset! connections-atom {})  
-      c))
+  (stop [this]
+    (if connections-atom
+      (do
+        (IConns/close-all! this)
+        (assoc this :connections-atom nil))
+      this))
 
   IConns/IConnections
 
   (clean-up! [this]
-    (comment (swap! connections-atom #(into {} filter-the-dead %)) )
+    (swap! connections-atom #(into {} filter-the-dead %))
     nil)
 
   (add! [this conn]
@@ -164,34 +160,36 @@
       nil)))
 
 (defn connections-component []
-  (->Connections[]))
+  (map->Connections {} ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn- get-connections [this ]
   (:connections this))
-(defrecord Server [port connections server-inst]
+
+(defrecord Server [connections server-inst config]
 
   component/Lifecycle
 
-  (start [c]
-    (let [c (stop c)]
-     (let [handler (fn [req]
-                    (let [conn (c/mk-connection-process req)]
-                      (IConns/add! connections conn)))]
-      (assoc c
-             :state :running
-             :server-inst (run-server (-> handler wrap-websocket-handler) {:port 6502}))) ))
+  (start [this]
+    (if-not server-inst
+      (let [handler (fn [req]
+                      (let [conn (c/mk-connection-process req)]
+                        (IConns/add! connections conn))) ]
+        (assoc this
+               :state :running
+               :server-inst (run-server (-> handler wrap-websocket-handler) {:port (:port config)})) )
+      this))
 
-  (stop [c]
+  (stop [this]
     (if server-inst
       (do
-        (println "about to sotp server")
+
         (server-inst :timeout 300)
-        (println "done")
-        (assoc c
+
+        (assoc this
                :server-inst nil
                :state nil))
-      c)))
+      this)))
 
-(defn server-component [port] (map->Server {:port port}) )
+(defn server-component [] (map->Server {}) )
 

@@ -6,7 +6,7 @@
     [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
     [org.httpkit.server :refer [run-server]]
-    [com.stuartsierra.component :refer [start stop start-system stop-system]:as component] 
+    [com.stuartsierra.component :refer [start-system stop-system]:as component] 
     [clojure.pprint :as pp])
   (:gen-class))
 
@@ -43,6 +43,7 @@
 (defn -main [& args]
   (println "here I am!"))
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmacro dochan [[binding chan] & body]
@@ -54,52 +55,38 @@
              ~@body
              (recur))
            :done)))))
-      
 
 (defrecord App []
   component/Lifecycle
 
   (start [c]
-    c
-    )
+    c) 
 
   (stop [c]
-    c
-    )
-  )
-
-
-(defn mk-system [{:keys [port ] :as config}]
-  (component/system-map
-
-    :connect-ch (a/chan)
-
-    :connections (connections-component) 
-
-    :server (component/using
-              (server-component port)
-              [:connect-ch :connections])
-
-    :app (component/using (map->App {}) 
-                          [:server ])))
+    c))
 
 (def config {:port 6502})
 
-(def sys (mk-system config))
+(defn mk-system [{:keys [port ] :as config}]
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (component/system-map
 
-(defn start! []
-    (alter-var-root #'sys component/start))
+    :config config
+
+    :connect-ch (a/chan)
+
+    :connections (component/using 
+                   (connections-component) 
+                   [:config])
+
+    :server (component/using
+              (server-component)
+              [:connect-ch :connections :config])
+
+    :app (component/using (map->App {}) 
+                          [:server :config])))
 
 
-(defn stop! []
-    (alter-var-root #'sys component/stop))
-
-(comment
-  (start!)
-
-  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

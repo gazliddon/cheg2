@@ -40,22 +40,20 @@
 (defn mk-player-msg [typ payload event-time]
   {:type typ :payload payload  :event-time event-time})
 
-(do
+(defmulti handle-msg! :type)
 
-  (defmulti handle-msg! :type)
+(defmethod handle-msg! :objs [msg]
+  (reset! objs (:payload msg)))
 
-  (defmethod handle-msg! :objs [msg]
-    (reset! objs (:payload msg)))
+(defmethod handle-msg! :time [msg]
+  (reset! t (:event-time msg)))
 
-  (defmethod handle-msg! :time [msg]
-    (reset! t (:event-time msg)))
+(defmethod handle-msg! :ping [msg]
+  (let [lp (-> :pings :last-ping @state)]
+    (swap! state assoc-in [:pings :last-ping] (inc lp)) ))
 
-  (defmethod handle-msg! :ping [msg]
-    (let [lp (-> :pings :last-ping @state)]
-      (swap! state assoc-in [:pings :last-ping] (inc lp)) ))
-
-  (defmethod handle-msg! :default [msg]
-    (println (str "unhandled msg" msg))))
+(defmethod handle-msg! :default [msg]
+  (println (str "unhandled msg" msg)))
 
 (defn conn []
   (go
@@ -73,6 +71,7 @@
           (loop []
             (let [{:keys [message event-time] :as msg} (<! ws-channel)]
               (when msg
+                (println msg)
                 (handle-msg! message)
                 (recur)))))
         ))))

@@ -1,6 +1,9 @@
 (ns user
   (:require
-   [figwheel-sidecar.repl-api :as f]))
+    [servalan.main :as main]
+    [com.stuartsierra.component :as component] 
+    [clojure.tools.namespace.repl :refer (refresh)]
+    [figwheel-sidecar.repl-api :as f]))
 
 ;; user is a namespace that the Clojure runtime looks for and
 ;; loads if its available
@@ -40,3 +43,27 @@
   "Launch a ClojureScript REPL that is connected to your build and host environment."
   []
   (f/cljs-repl))
+
+(def system nil)
+
+(def config {:port 6502})
+
+(defn init []
+  (alter-var-root #'system
+    (constantly (main/mk-system config))))
+
+(defn start []
+  (alter-var-root #'system component/start))
+
+(defn stop []
+  (alter-var-root #'system
+    (fn [s] (when s (component/stop s)))))
+
+(defn go []
+  (init)
+  (start))
+
+(defn reset []
+  (stop)
+  (refresh :after 'user/go))
+
