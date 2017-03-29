@@ -1,8 +1,6 @@
-# Shared code
-* Need cljc for stuff shared between client and server
-* add dir
-* update project.clj
-* get fsm shared as starte
+# Debug
+* get message handling working on client
+	* ping messages are not handled
 
 # Client
 * need states for client

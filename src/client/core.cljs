@@ -1,5 +1,8 @@
 (ns client.core
   (:require
+
+    [servalan.messages :refer [mk-msg]]
+
     [servalan.fsm :as fsm]
     [client.protocols :as p] 
     [client.html :as html]
@@ -21,8 +24,6 @@
 
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
-
-
 (def objs (atom []))
 
 (def t (atom 0))
@@ -38,9 +39,6 @@
 (println state)
 
 (enable-console-print!)
-
-(defn mk-player-msg [typ payload event-time]
-  {:type typ :payload payload  :event-time event-time})
 
 (defmulti handle-msg! :type)
 
@@ -68,7 +66,7 @@
         (do
           (println (str "connected to server " k))
 
-          (>! ws-channel (mk-player-msg :joined "I joined!" 0))
+          (>! ws-channel (mk-msg :joined "I joined!" 0))
 
           (loop []
             (let [{:keys [message event-time] :as msg} (<! ws-channel)]

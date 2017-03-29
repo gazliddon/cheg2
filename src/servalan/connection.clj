@@ -1,5 +1,6 @@
 (ns servalan.connection
   (:require 
+    [servalan.messages :refer [mk-msg]]
     [taoensso.timbre :as t ]
 
     [servalan.protocols.connection :as connection]
@@ -119,6 +120,9 @@
              (recur))
            :done)))))
 
+(defn- ping-msg [t]
+  (mk-msg :ping {} t))
+
 (defn mk-connection-process
   ;; Turn a ws request into a connection process
   ;; and return a connection record
@@ -143,7 +147,7 @@
       ;; pings
       (dochan [_ ws-channel]
               (<! (a/timeout 3000))
-              (>! ws-channel {:type :ping})
+              (>! ws-channel (ping-msg 0))
               (ev-fn {} :sent-ping))
 
       ;; stop channel
