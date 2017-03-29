@@ -1,5 +1,8 @@
 (ns servalan.main
   (:require 
+    [taoensso.timbre :as t ]
+    [taoensso.timbre.appenders.core :as appenders]
+
     [figwheel-sidecar.repl-api :as f]  
     [servalan.servercomp :refer [server-component connections-component]]
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
@@ -25,27 +28,16 @@
           (recur start (System/nanoTime)))))
     c))
 
-(defn fig-start
-  "This starts the figwheel server and watch based auto-compiler."
-  []
- ;; this call will only work are long as your :cljsbuild and
-  ;; :figwheel configurations are at the top level of your project.clj
-  ;; and are not spread across different lein profiles
-
-  ;; otherwise you can pass a configuration into start-figwheel! manually
-  (f/start-figwheel!))
-
-(defn fig-stop
-  "Stop the figwheel server and watch based auto-compiler."
-  []
-  (f/stop-figwheel!))
+(defn init-logging []
+  (t/merge-config!
+    {:appenders {:println nil
+                 :spit (appenders/spit-appender {:fname "/Users/garyliddon/development/cheg2/servalan.log"})}})
+  (t/info "Booting servalan") )
 
 (defn -main [& args]
-  (println "here I am!"))
-
+  (init-logging))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defmacro dochan [[binding chan] & body]
   `(let [chan# ~chan]
      (cljs.core.async.macros/go
@@ -68,6 +60,7 @@
 (def config {:port 6502})
 
 (defn mk-system [{:keys [port ] :as config}]
+  (t/info "creating system")
 
   (component/system-map
 

@@ -1,7 +1,11 @@
 (ns servalan.connection
   (:require 
+    [taoensso.timbre :as t ]
+
     [servalan.protocols.connection :as connection]
+
     [servalan.fsm :as fsm]
+
     [clojure.core.async :refer [<!! >!! <! >! put! go chan] :as a]  
     [clj-uuid :as uuid]
     [clojure.pprint :as pp])
@@ -49,22 +53,22 @@
     (fsm/event! this :done payload))
 
   (has-connected [this payload]
-    (println "back to has connected"))
+    (t/info "TBD: back to has connected"))
 
   (is-disconnecting [this payload]
-    (println "is disconnecting")
+    (t/info "TBD: is disconnecting")
     (fsm/event! this :done payload))
 
   (has-disconnected [this payload]
-    (println "has disconnected")
+    (t/info "TBD: has disconnected")
     (connection/close! this))
 
   (handling-client-msg [this payload]
-    (println "handling client message")
+    (t/info "TBD: handling client message")
     (fsm/event! this :done payload) )
 
   (handling-server-msg [this payload]
-    (println "handling server message")
+    (t/info "TBD: handling server message")
     (fsm/event! this :done payload)  ) 
 
   connection/IConnection
@@ -82,8 +86,6 @@
   fsm/IStateMachine
 
   (event! [this ev payload]
-
-    (println "Got an event!")
 
     (let [old-state (fsm/get-state fsm)
           new-state (fsm/event! fsm ev payload) ]
@@ -123,7 +125,6 @@
 
   [req]
 
-  (println "starting a conn process")
 
   (let [id (-> (uuid/v4) str keyword)
 
@@ -135,6 +136,9 @@
                   (doseq [ch [ws-channel com-channel stop-ch]]
                     (a/close! ch))) ]
 
+    (t/info "client connected " id)
+    (t/info "req" req)
+
     (do
       ;; pings
       (dochan [_ ws-channel]
@@ -144,7 +148,7 @@
 
       ;; stop channel
       (dochan [msg stop-ch]
-              (println "about to stop!")
+              (t/info "stopping connection" "a")
               (ev-fn msg :stop)
               (stop-fn))
 

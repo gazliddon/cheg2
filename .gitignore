@@ -13,3 +13,4 @@ pom.xml
 .nrepl-port
 .repl*
 .cljs_rhino_repl*
+servalan.log

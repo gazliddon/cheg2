@@ -10,6 +10,7 @@
                  [org.clojure/clojurescript "1.9.229"]
 
                  [prismatic/dommy "1.1.0"]
+
                  [hipo "0.5.2"]
 
                  [danlentz/clj-uuid "0.1.6"]
@@ -17,15 +18,17 @@
                  [jarohen/chord "0.8.1"]
                  [compojure "1.5.2"]
 
+                 [com.taoensso/timbre "4.8.0"]
+
                  [ org.omcljs/om "1.0.0-alpha34"] 
 
                  [com.stuartsierra/component "0.3.2"]
 
                  [ring-middleware-format "0.7.2"]
+
                  [ring "1.5.1"]
 
-                 [org.clojure/core.async "0.2.395"
-                  :exclusions [org.clojure/tools.reader]]]
+                 [org.clojure/core.async "0.2.395" :exclusions [org.clojure/tools.reader]]]
 
   :plugins [[lein-figwheel "0.5.9"]
             [lein-cljsbuild "1.1.5" :exclusions [[org.clojure/clojure]]]]

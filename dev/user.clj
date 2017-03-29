@@ -1,9 +1,11 @@
 (ns user
   (:require
+    [taoensso.timbre :as t ]
     [servalan.main :as main]
     [com.stuartsierra.component :as component] 
     [clojure.tools.namespace.repl :refer (refresh)]
-    [figwheel-sidecar.repl-api :as f]))
+    [figwheel-sidecar.repl-api :as f])
+  (:gen-class))
 
 ;; user is a namespace that the Clojure runtime looks for and
 ;; loads if its available
@@ -60,6 +62,7 @@
     (fn [s] (when s (component/stop s)))))
 
 (defn go []
+  (main/init-logging)
   (init)
   (start))
 

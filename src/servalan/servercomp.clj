@@ -1,5 +1,6 @@
 (ns servalan.servercomp
   (:require 
+    [taoensso.timbre :as t ]
 
     [servalan.protocols.connections :as IConns]
     [servalan.protocols.connection :as IConn]
@@ -114,12 +115,16 @@
 
   (start [this]
     (if-not connections-atom
-      (assoc this :connections-atom (atom {})) 
+      (do
+        (t/info "starting connections component")
+        (assoc this :connections-atom (atom {})) )
+
       this))
 
   (stop [this]
     (if connections-atom
       (do
+        (t/info "stopping connections component")
         (IConns/close-all! this)
         (assoc this :connections-atom nil))
       this))
@@ -175,6 +180,9 @@
       (let [handler (fn [req]
                       (let [conn (c/mk-connection-process req)]
                         (IConns/add! connections conn))) ]
+
+        (t/info "starting server component")
+
         (assoc this
                :state :running
                :server-inst (run-server (-> handler wrap-websocket-handler) {:port (:port config)})) )
@@ -183,6 +191,7 @@
   (stop [this]
     (if server-inst
       (do
+        (t/info "stopping server component")
 
         (server-inst :timeout 300)
 
