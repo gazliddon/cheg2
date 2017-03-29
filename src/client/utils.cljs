@@ -1,10 +1,7 @@
 (ns client.utils
   (:require
     [dommy.core             :as dommy :include-macros true]   
-    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]    
-    )
-
-  ) 
+    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]))
 
 (defn animate-lo! [callback-fn quit-atom?]
   (when-not @quit-atom?

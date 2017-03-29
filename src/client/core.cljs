@@ -1,5 +1,6 @@
 (ns client.core
   (:require
+    [servalan.fsm :as fsm]
     [client.protocols :as p] 
     [client.html :as html]
     [client.utils :refer [ch->coll cos cos01] :as u]
@@ -19,6 +20,7 @@
     [dommy.core             :as dommy :include-macros true]  )
 
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
+
 
 
 (def objs (atom []))

@@ -39,7 +39,7 @@
 
   :cljsbuild {:builds
               [{:id "dev"
-                :source-paths ["src/client"]
+                :source-paths ["src"]
 
                 ;; the presence of a :figwheel configuration here
                 ;; will cause figwheel to inject the figwheel client
