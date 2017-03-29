@@ -28,7 +28,7 @@
 
 (def t (atom 0))
 
-(defonce state (atom {:server-time 0 
+(def state (atom {:server-time 0 
                   :time 0 
 
                   :pings {:last-ping 0 
@@ -49,8 +49,8 @@
   (reset! t (:event-time msg)))
 
 (defmethod handle-msg! :ping [msg]
-  (let [lp (-> :pings :last-ping @state)]
-    (swap! state assoc-in [:pings :last-ping] (inc lp)) ))
+  (swap! state update-in [:pings :last-ping] inc)
+  (println state))
 
 (defmethod handle-msg! :default [msg]
   (println (str "unhandled msg" msg)))

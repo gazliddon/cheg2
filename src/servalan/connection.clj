@@ -129,30 +129,32 @@
 
   [req]
 
-
   (let [id (-> (uuid/v4) str keyword)
 
         {:keys [ws-channel com-channel stop-ch] :as conn} (mk-connection req )
 
         ev-fn (fn[ev msg] (fsm/event! conn ev {:msg msg :conn conn}))
 
+        running? (atom true)
+
         stop-fn (fn []
+                  (reset! running? false)
                   (doseq [ch [ws-channel com-channel stop-ch]]
                     (a/close! ch))) ]
 
     (t/info "client connected " id)
-    (t/info "req" req)
 
     (do
       ;; pings
-      (dochan [_ ws-channel]
-              (<! (a/timeout 3000))
-              (>! ws-channel (ping-msg 0))
-              (ev-fn {} :sent-ping))
+      (go
+        (while @running?
+          (>! ws-channel (ping-msg 0))
+          (ev-fn {} :sent-ping) 
+          (<! (a/timeout 3000))))
 
       ;; stop channel
       (dochan [msg stop-ch]
-              (t/info "stopping connection" "a")
+              (t/info "stopping connection" id)
               (ev-fn msg :stop)
               (stop-fn))
 

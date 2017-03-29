@@ -141,7 +141,9 @@
                       (:id conn)
                       (has-connection? @connections-atom))]
       (when-not has-con
-        (swap! connections-atom assoc (:id conn) conn))
+        (swap! connections-atom assoc (:id conn) conn)
+        (t/info "number of connections: " (count @connections-atom)))
+
       nil)))
 
   (send! [this id msg]
