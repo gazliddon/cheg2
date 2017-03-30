@@ -5,6 +5,7 @@
 
     [figwheel-sidecar.repl-api :as f]  
     [servalan.servercomp :refer [server-component connections-component]]
+    [servalan.macros :refer [dochan chandler]]
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
     [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
@@ -38,16 +39,6 @@
   (init-logging))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defmacro dochan [[binding chan] & body]
-  `(let [chan# ~chan]
-     (cljs.core.async.macros/go
-       (loop []
-         (if-let [~binding (cljs.core.async/<! chan#)]
-           (do
-             ~@body
-             (recur))
-           :done)))))
-
 (defrecord App []
   component/Lifecycle
 

@@ -3,6 +3,7 @@
     [taoensso.timbre :as t ]
     [servalan.main :as main]
     [com.stuartsierra.component :as component] 
+    [servalan.protocols.connections :as IConns]
     [clojure.tools.namespace.repl :refer (refresh)]
     [figwheel-sidecar.repl-api :as f])
   (:gen-class))
@@ -60,6 +61,15 @@
 (defn stop []
   (alter-var-root #'system
     (fn [s] (when s (component/stop s)))))
+
+
+(defn kill-all []
+  (->
+    (:connections system)
+    (IConns/close-all!)))
+
+
+(:connections system)
 
 (defn go []
   (main/init-logging)

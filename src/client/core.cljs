@@ -1,11 +1,24 @@
 (ns client.core
   (:require
+    [client.game :as game]
+
+    [taoensso.timbre :as t
+      :refer-macros [log  trace  debug  info  warn  error  fatal  report
+                     logf tracef debugf infof warnf errorf fatalf reportf
+                     spy get-env]]
+
+    [sablono.core :as html :refer-macros [html]]
+    [com.stuartsierra.component :as c]
+
+    [servalan.protocols.clientconnection :as client]
+    [client.client :refer [mk-client-component]]
 
     [servalan.messages :refer [mk-msg]]
+    [servalan.utils :as su]
 
     [servalan.fsm :as fsm]
     [client.protocols :as p] 
-    [client.html :as html]
+    [client.html :refer [mk-html-component mk-html-events-component]]
     [client.utils :refer [ch->coll cos cos01] :as u]
 
     [client.keys :as k]
@@ -18,163 +31,224 @@
 
 
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
+
     [chord.client :refer [ws-ch]]
     [hipo.core              :as hipo  :include-macros true]
     [dommy.core             :as dommy :include-macros true]  )
 
-  (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
+  (:require-macros 
+    [servalan.macros :as m :refer [dochan]]
+    [cljs.core.async.macros :refer [go go-loop]]))
+
+
+(def config { :conn-config {:url  "ws://localhost:6502"
+                            :ping-frequency 1000 }
+             :html-id "game" })
+
+(defn mk-com-chan []
+  (let [reader (chan)
+        writer (chan) ]
+
+    (go-loop
+      [ ]
+      (if-let [m (<! writer)]
+        (do
+          (>! reader m)
+          (recur))))
+    
+    (su/bidi-ch
+      reader
+      writer)))
+
+(defn mk-game [config com-chan]
+
+  (c/system-map
+
+    :com-chan com-chan
+
+    :config config
+
+    :system (mk-html-component (:html-id config))
+
+    :events (mk-html-events-component )
+
+    :client-connection (c/using
+                        ( mk-client-component (:conn-config config) )
+                        [:com-chan])
+
+    :game (c/using (game/mk-game)
+                          [:com-chan
+                           :client-connection
+                           :events
+                           :system
+                           :config])
+    )
+  )
+
+(defonce sys-atom (atom nil))
+
+(defn stop []
+ (when @sys-atom
+  (c/stop-system @sys-atom)
+  (close! (:com-chan @sys-atom ))
+  (reset! sys-atom nil)) )
+
+(defn start []
+  (do
+    (stop)
+
+    (->>
+      (mk-com-chan)
+      (mk-game config)
+      (c/start-system) 
+      (reset! sys-atom ))  
+    
+    (-> @sys-atom :client-connection client/connect!)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (def objs (atom []))
 
-(def t (atom 0))
-
 (def state (atom {:server-time 0 
+                  :conn-status :disconnected
                   :time 0 
 
                   :pings {:last-ping 0 
-                          :last-pong 0    }
-
-                  }))
-
-(println state)
+                          :last-pong 0    } }))
 
 (enable-console-print!)
 
-(defmulti handle-msg! :type)
-
-(defmethod handle-msg! :objs [msg]
-  (reset! objs (:payload msg)))
-
-(defmethod handle-msg! :time [msg]
-  (reset! t (:event-time msg)))
-
-(defmethod handle-msg! :ping [msg]
-  (swap! state update-in [:pings :last-ping] inc)
-  (println state))
-
-(defmethod handle-msg! :default [msg]
-  (println (str "unhandled msg" msg)))
-
-(defn conn []
-  (go
-    (let [{:keys [ws-channel error] :as k} (<! (ws-ch "ws://localhost:6502"))]
-
-      (if error
-
-        (println (str "error: " error))
-
-        (do
-          (println (str "connected to server " k))
-
-          (>! ws-channel (mk-msg :joined "I joined!" 0))
-
-          (loop []
-            (let [{:keys [message event-time] :as msg} (<! ws-channel)]
-              (when msg
-                (println msg)
-                (handle-msg! message)
-                (recur)))))
-        ))))
-
-(conn)
-
-;; HTML
-
-;; =============================================================================
 (defn on-js-reload []
   ;; optionally touch your app-state to force rerendering depending on
   ;; your application
    ;; (swap! app-state update-in [:__figwheel_counter] inc)
 )
 
-;; =============================================================================
-;; html bullshit
 
 
+(def app-state (atom {:conn-status :disconnected
+                      :game-running false }))
 
 
+(defmulti reader-fn om/dispatch)
 
-;; =============================================================================
-;; Objs
+(defmethod reader-fn :default
+ [{:keys [state]} k _]
+  (let [st @state] ;; CACHING!!!
+    (if (contains? st k)
+      {:value (get st k)})))
 
-(defn is-active? [{:keys [start-time duration]} t]
-  (and (>= t start-time) (< t (+ start-time duration))))
 
-(defn perc-through [{:keys [start-time duration]} t]
-  (/ (- t start-time) duration ))
+; (defmethod reader-fn :conn-status
+;   [{:keys [state] :as env} key params]
+;   {:value (str(:conn-status @state))})
 
-(defmulti draw-obj (fn [obj t ctx]
-                     (:type obj)) )
 
-(defmethod draw-obj :frutz [{:keys [pos col]} t ctx]
-  (let [[x y] pos
-        new-pos [(+ x (* 100 (cos01 (* 3 t )))) y] ]
-    (p/square! ctx new-pos [30 30] col) ))
+; (defmethod reader-fn :game-running
+;   [{:keys [state] :as env} key params]
+;   {:value (:game-running @state)})
 
-(defmethod draw-obj :player [{:keys [pos col]} t ctx]
-  (p/square! ctx pos [30 30] col))
 
-(defn draw-objs
-  "convert these objs into a draw list"
-  [objs t ctx]
-  (dorun
-    (->
-      (fn [o]
-        (when (is-active? o t)
-          (let [my-t (- (:start-time o) t)]
-            (draw-obj o my-t ctx) )))
-      (map objs))))
+(defmulti mutate-fn om/dispatch)
+
+(defmethod mutate-fn `game/start
+  [{:keys [state]} _ params]
+  {:action (fn[] (swap! state assoc :game-running true))})
+
+(defmethod mutate-fn `game/stop
+  [{:keys [state]} _ params]
+  {:action (fn [] (swap! state assoc :game-running false)) })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; player
 
-(def player (atom {:pos [10 10]}))
+(defn input-template [ ]
+  (html
+    [:form {:class "pure-form-stacked"} 
+     [:fieldset
 
-(def k->dir {
-   :z [-1 0]
-   :x [ 1 0]
-   :k [0 -1]
-   :m [0 1] })
+      [:legend "Login"]
 
-(defn addv2 [[x y] [x1 y1]] [(+ x x1) (+ y y1)])
+      [:input {:type "text" :placeholder "username":ref "name"}]
 
-(defn keys->player [player key-coll]
-  (->
-    (fn [res {:keys [event keypress]}]
-      (if (= event :keydown)
-        (let [v (get k->dir keypress [0 0])
-              p (addv2 (:pos res) v) ]
-          (assoc res :pos p))
-        res))
-    (reduce player key-coll)))
+      [:input {:type "password" :placeholder "password":ref "password"}]
 
-(comment defn update! [io timer ]
-  (let [renderer (renderer io)
-        now (/ ( now timer ) 1000    )
-        col [(int (* 255 (cos01 (* 10 now )) )) 0 0]
-        new-t (mod now 5)
-        new-player (keys->player @player (keyboard io)) ]
-    (do
-      (clear-buffer! renderer  col)
-      (draw-objs @objs @t renderer  )
-      (square! renderer (:pos new-player) [10 10] [255 255 255] )
-      (reset! player new-player))))
+      [:button {:type "submit" :class "pure-button pure-button-primary"} "Sign In"] ] ]))
 
-(defn make-game []
-  (let  [ sys (html/mk-system) ]
-    (go
-      (loop []
-        (let [m (<! (p/events-ch sys))]
+(defui LoginBox
+  static om/IQuery
 
-          (case (:type m)
-            :animate nil
-            :resize (println "resize"))
-          
-         (recur))))
-    sys))
+  Object
+  (query [this]
+         [:transaction :show-password])
 
-(defn main [])
+  (render [this]
+          (let [{:keys [transaction] :as props} (om/props this)]
+            )
+          )
+  )
 
+
+(defn login-box [] (om/factory LoginBox))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn mk-button [this txt transaction action]
+  [:button
+   {:class  "pure-button pure-button-primary"
+    :on-click (fn []
+                (action)
+                (om/transact! this transaction)) }
+   txt]
+
+  ; [:button
+  ;  {:class  "pure-button pure-button-primary"
+
+  ;   :on-click (fn []
+  ;               (action)
+  ;               (om/transact! this transaction)) }
+  ;  txt]
+  )
+
+(defn game-running-buttons [this]
+  )
+
+(defui App
+
+  static om/IQuery
+
+  (query [this]
+         '[:game-running])
+  Object
+
+  (render [this]
+          (let [{:keys [game-running] :as props} (om/props this) ]
+            (html
+              [:div
+               [:h1 "Cheg"]
+
+               (if game-running
+                 (mk-button this "Quit" `[(game/stop)] stop) 
+                 (mk-button this "Start" `[(game/start)] start)) ]
+              ))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def reconciler
+
+  (om/reconciler
+    {:state app-state
+     :parser (om/parser {:read reader-fn :mutate mutate-fn})}))
+
+(defn main []
+  (let [app-el (gdom/getElement "app")
+        game-el (gdom/getElement "game") ]
+
+    (om/add-root! reconciler
+                  App app-el)))
+
+(stop)
+(main)
 
 
 

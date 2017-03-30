@@ -2,13 +2,14 @@
   (:require 
     [taoensso.timbre :as t ]
 
+    [servalan.fsm :as fsm]
+
+    [servalan.messages :refer [mk-msg]]
     [servalan.protocols.connections :as IConns]
     [servalan.protocols.connection :as IConn]
     [servalan.connection :as c]
 
-    [servalan.fsm :as fsm]
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
-    [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
 
     [org.httpkit.server :refer [run-server]]
@@ -63,14 +64,12 @@
 
 (def players (atom {}))
 
-(defn keyword-uuid []
-  (keyword (str (uuid/v4)) ))
 
 (defn mk-player [{:keys [ws-channel] :as req}]
   {:type :player
    :last-ping -1
    :remote (:remote-addr req)
-   :id (keyword-uuid)
+   :id (c/keyword-uuid)
    :ws-channel ws-channel })
 
 (defn mk-player-msg [typ payload event-time]
@@ -97,15 +96,18 @@
     (apply method conn payload))
   nil)
 
-(defn- has-died? [conn]
-  (not (IConn/is-connected? conn)))
 
-;; Dead filter transducer
-(def filter-the-dead 
-  (filter (fn [id conn] (not (IConn/is-connected? conn)))))
+;; TODO filter for long pings
 
+(defn is-alive? [c]
+  (IConn/is-connected? c))
+
+(defn is-dead? [c]
+  (not (is-alive? c)))
+ 
 (defn- has-connection? [connections id]
   (get connections id nil))
+
 
 ;;;;;;;;;;
 
@@ -132,19 +134,36 @@
   IConns/IConnections
 
   (clean-up! [this]
-    (swap! connections-atom #(into {} filter-the-dead %))
+    (do
+      (let [new-conns (into {} (filter (fn [[k v]]
+                                         (is-alive? v)) @connections-atom))]
+
+        (t/info "cleaning up connections " (count @connections-atom))
+
+        (reset! connections-atom (into {} new-conns))
+
+        (t/info "cleaned up connections " (count @connections-atom)) 
+        ))
+
     nil)
 
   (add! [this conn]
     (do
-      (let [has-con (->>
+
+      (IConns/clean-up! this)
+
+      (let [id (:id conn)
+            has-con (->>
                       (:id conn)
                       (has-connection? @connections-atom))]
-      (when-not has-con
-        (swap! connections-atom assoc (:id conn) conn)
-        (t/info "number of connections: " (count @connections-atom)))
 
-      nil)))
+        (when-not has-con
+
+          (swap! connections-atom assoc (:id conn) conn)
+
+          (IConn/command! conn (mk-msg :hello-from-server {:id id } 0) ))
+
+        nil)))
 
   (send! [this id msg]
     (do
@@ -173,7 +192,7 @@
 (defn- get-connections [this ]
   (:connections this))
 
-(defrecord Server [connections server-inst config]
+(defrecord Server [connections config server-inst ]
 
   component/Lifecycle
 
@@ -181,7 +200,8 @@
     (if-not server-inst
       (let [handler (fn [req]
                       (let [conn (c/mk-connection-process req)]
-                        (IConns/add! connections conn))) ]
+                        (IConns/add! connections conn)
+                        )) ]
 
         (t/info "starting server component")
 
