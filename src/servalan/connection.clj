@@ -1,4 +1,5 @@
 (ns servalan.connection
+
   (:require 
     [servalan.messages :refer [mk-msg]]
     [taoensso.timbre :as t ]
@@ -7,7 +8,7 @@
 
     [servalan.fsm :as fsm]
 
-    [clojure.core.async :refer [<!! >!! <! >! put! go chan] :as a]  
+    [clojure.core.async :refer [<!! >!! <! >! put! go chan go-loop] :as a]  
     [clj-uuid :as uuid]
     [clojure.pprint :as pp])
   )
@@ -90,6 +91,7 @@
 
     (let [old-state (fsm/get-state fsm)
           new-state (fsm/event! fsm ev payload) ]
+      (println (str "ev " ev))
       (println (str old-state))
       (println (str new-state))
       (when new-state
@@ -140,7 +142,8 @@
         stop-fn (fn []
                   (reset! running? false)
                   (doseq [ch [ws-channel com-channel stop-ch]]
-                    (a/close! ch))) ]
+                    (a/close! ch))
+                  (ev-fn {} :disconnect)) ]
 
     (t/info "client connected " id)
 
@@ -149,7 +152,7 @@
       (go
         (while @running?
           (>! ws-channel (ping-msg 0))
-          (ev-fn {} :sent-ping) 
+          (ev-fn :sent-ping {}) 
           (<! (a/timeout 3000))))
 
       ;; stop channel
@@ -159,15 +162,21 @@
               (stop-fn))
 
       ;; from client
-      (dochan [msg ws-channel]
-              (ev-fn msg :client-message) )
+      (go-loop []
+               (if-let [msg (<! ws-channel)]
+                 (do
+                   (println msg)
+                   (ev-fn :client-message msg)
+                   (recur))
+                 (do
+                   (println "STOPPER")
+                   (stop-fn))))
 
       ;; from server / player
       (dochan [msg com-channel]
-              (ev-fn msg (:event msg)))
-      )
-    
-    conn))
+              (ev-fn (:event msg ) msg ))
+
+      conn)))
 
 ;; Some tests
 

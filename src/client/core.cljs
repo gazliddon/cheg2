@@ -22,7 +22,9 @@
     [hipo.core              :as hipo  :include-macros true]
     [dommy.core             :as dommy :include-macros true]  )
 
-  (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
+  (:require-macros 
+    [client.macros :as m]
+    [cljs.core.async.macros :refer [go go-loop]]))
 
 (def objs (atom []))
 
@@ -35,7 +37,6 @@
                           :last-pong 0    }
 
                   }))
-
 (println state)
 
 (enable-console-print!)
@@ -48,35 +49,54 @@
 (defmethod handle-msg! :time [msg]
   (reset! t (:event-time msg)))
 
-(defmethod handle-msg! :ping [msg]
+(defmethod handle-msg! :ping [{:keys [ws-channel]}]
+  (put! ws-channel (mk-msg :pong {} 0))
+  (println "handling ping")
   (swap! state update-in [:pings :last-ping] inc)
-  (println state))
+  (println @state))
 
 (defmethod handle-msg! :default [msg]
   (println (str "unhandled msg" msg)))
 
-(defn conn []
-  (go
-    (let [{:keys [ws-channel error] :as k} (<! (ws-ch "ws://localhost:6502"))]
 
-      (if error
+(defn conn [com-chan]
+  (println "connecting to server")
+  
+  (let [kill-chan (html/setup-event 
+                    {:event html/close-window-events
+                     :xf (map identity)} ) ]
+    (go
+      (let [{:keys [ws-channel error] :as k} (<! (ws-ch "ws://localhost:6502"))]
+        (println (str "connected to " k ))
 
-        (println (str "error: " error))
+        (if error
+          (println (str "error: " error))
 
-        (do
-          (println (str "connected to server " k))
+          (do
+            (let [kill-lst [ws-channel kill-chan com-chan]
+                  kill-fn (fn []
+                            (println "kill function!")
+                            (doseq [c kill-lst] (close! c))) ]
 
-          (>! ws-channel (mk-msg :joined "I joined!" 0))
+              (go
+                (<! (timeout 3000))
+                (kill-fn))
 
-          (loop []
-            (let [{:keys [message event-time] :as msg} (<! ws-channel)]
-              (when msg
-                (println msg)
-                (handle-msg! message)
-                (recur)))))
-        ))))
+              (go
+                (<! kill-chan)
+                (kill-fn))
 
-(conn)
+              (m/dochan [message com-chan]
+                      (>! ws-channel message))
+
+              (m/dochan [{:keys [message]} ws-channel]
+                      (handle-msg!
+                        (assoc message :ws-channel ws-channel))))))))))
+
+(def com-ch (chan))
+
+(conn com-ch)
+
 
 ;; HTML
 

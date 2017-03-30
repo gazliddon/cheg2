@@ -39,6 +39,7 @@
 (def keyup-events (.-KEYUP events/EventType))
 (def keydown-events (.-KEYDOWN events/EventType))
 (def resize-events (.-RESIZE events/EventType))
+(def close-window-events (.-BEFOREUNLOAD events/EventType))
 
 (def deaf! events/removeAll)
 
@@ -208,10 +209,6 @@
 
 (comment
 
-  (do
-    (let [sys (mk-system)]
-      )
-    )
   
 
   )
