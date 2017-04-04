@@ -97,15 +97,18 @@
     (apply method conn payload))
   nil)
 
-(defn- has-died? [conn]
-  (not (IConn/is-connected? conn)))
 
-;; Dead filter transducer
-(def filter-the-dead 
-  (filter (fn [id conn] (not (IConn/is-connected? conn)))))
+;; TODO filter for long pings
 
+(defn is-alive? [c]
+  (IConn/is-connected? c))
+
+(defn is-dead? [c]
+  (not (is-alive? c)))
+ 
 (defn- has-connection? [connections id]
   (get connections id nil))
+
 
 ;;;;;;;;;;
 
@@ -132,19 +135,32 @@
   IConns/IConnections
 
   (clean-up! [this]
-    (swap! connections-atom #(into {} filter-the-dead %))
+    (do
+
+
+      (let [new-conns (into {} (filter (fn [[k v]]
+                                         (is-alive? v)) @connections-atom))]
+
+        (t/info "cleaning up connections " (count @connections-atom))
+        (reset! connections-atom (into {} new-conns))
+        (t/info "cleaned up connections " (count @connections-atom)) 
+        ))
+
     nil)
 
   (add! [this conn]
     (do
+
+      (IConns/clean-up! this)
+
       (let [has-con (->>
                       (:id conn)
                       (has-connection? @connections-atom))]
-      (when-not has-con
-        (swap! connections-atom assoc (:id conn) conn)
-        (t/info "number of connections: " (count @connections-atom)))
+        (when-not has-con
+          (swap! connections-atom assoc (:id conn) conn)
+          (t/info "number of connections: " (count @connections-atom)))
 
-      nil)))
+        nil)))
 
   (send! [this id msg]
     (do
@@ -173,7 +189,7 @@
 (defn- get-connections [this ]
   (:connections this))
 
-(defrecord Server [connections server-inst config]
+(defrecord Server [connections config server-inst ]
 
   component/Lifecycle
 

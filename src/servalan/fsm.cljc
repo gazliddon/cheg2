@@ -32,6 +32,7 @@
 
   (get-state [this] @state))
 
+
 (defn mk-state-machine
   
   ([table dispatcher]

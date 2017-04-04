@@ -1,11 +1,18 @@
 (ns client.core
   (:require
 
+    [sablono.core :as html :refer-macros [html]]
+
+    [com.stuartsierra.component :as c]
+
+    [servalan.protocols.clientconnection :as client]
+    [client.client :as clientcomp]
+
     [servalan.messages :refer [mk-msg]]
 
     [servalan.fsm :as fsm]
     [client.protocols :as p] 
-    [client.html :as html]
+    [client.html :as client-html]
     [client.utils :refer [ch->coll cos cos01] :as u]
 
     [client.keys :as k]
@@ -18,85 +25,68 @@
 
 
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
+
     [chord.client :refer [ws-ch]]
     [hipo.core              :as hipo  :include-macros true]
     [dommy.core             :as dommy :include-macros true]  )
 
   (:require-macros 
-    [client.macros :as m]
+    [servalan.macros :as m]
     [cljs.core.async.macros :refer [go go-loop]]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(def connnection-config { :url "ws://localhost:6502"
+                          :retry? true
+                          :wait 1000 })
+
+(def config { :url  "ws://localhost:6502" })
+(def kill-chan (chan))
+(def com-chan (chan))
+
+(defrecord Game [])
+
+(defn mk-game-system [config com-chan kill-chan]
+
+  (c/system-map
+
+    :com-chan com-chan
+
+    :config config
+
+    :kill-chan kill-chan
+
+    :html :html
+
+    :client-connection (c/using (clientcomp/map->ClientConnection {}) 
+                          [:config :com-chan])
+
+    :game  (c/using (map->Game {})
+                    [:client-connection :config])
+    )
+  )
+
+(def sys-obj (mk-game-system config com-chan kill-chan ))
+(def sys (c/start-system sys-obj))
+(def conn (:client-connection sys))
+
+(defn start-connection []
+    (client/connect! conn ))
+
+
+(a/put! kill-chan :done)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (def objs (atom []))
 
-(def t (atom 0))
-
 (def state (atom {:server-time 0 
+                  :conn-status :disconnected
                   :time 0 
 
                   :pings {:last-ping 0 
-                          :last-pong 0    }
-
-                  }))
-(println state)
+                          :last-pong 0    } }))
 
 (enable-console-print!)
-
-(defmulti handle-msg! :type)
-
-(defmethod handle-msg! :objs [msg]
-  (reset! objs (:payload msg)))
-
-(defmethod handle-msg! :time [msg]
-  (reset! t (:event-time msg)))
-
-(defmethod handle-msg! :ping [{:keys [ws-channel]}]
-  (put! ws-channel (mk-msg :pong {} 0))
-  (println "handling ping")
-  (swap! state update-in [:pings :last-ping] inc)
-  (println @state))
-
-(defmethod handle-msg! :default [msg]
-  (println (str "unhandled msg" msg)))
-
-
-(defn conn [com-chan]
-  (println "connecting to server")
-  
-  (let [kill-chan (html/setup-event 
-                    {:event html/close-window-events
-                     :xf (map identity)} ) ]
-    (go
-      (let [{:keys [ws-channel error] :as k} (<! (ws-ch "ws://localhost:6502"))]
-        (println (str "connected to " k ))
-
-        (if error
-          (println (str "error: " error))
-
-          (do
-            (let [kill-lst [ws-channel kill-chan com-chan]
-                  kill-fn (fn []
-                            (println "kill function!")
-                            (doseq [c kill-lst] (close! c))) ]
-
-              (go
-                (<! (timeout 3000))
-                (kill-fn))
-
-              (go
-                (<! kill-chan)
-                (kill-fn))
-
-              (m/dochan [message com-chan]
-                      (>! ws-channel message))
-
-              (m/dochan [{:keys [message]} ws-channel]
-                      (handle-msg!
-                        (assoc message :ws-channel ws-channel))))))))))
-
-(def com-ch (chan))
-
-(conn com-ch)
-
 
 ;; HTML
 
@@ -106,12 +96,6 @@
   ;; your application
    ;; (swap! app-state update-in [:__figwheel_counter] inc)
 )
-
-;; =============================================================================
-;; html bullshit
-
-
-
 
 
 ;; =============================================================================
@@ -181,7 +165,7 @@
       (reset! player new-player))))
 
 (defn make-game []
-  (let  [ sys (html/mk-system) ]
+  (let  [ sys (client-html/mk-system) ]
     (go
       (loop []
         (let [m (<! (p/events-ch sys))]
@@ -193,8 +177,141 @@
          (recur))))
     sys))
 
-(defn main [])
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def app-state (atom {:count 0
+                      :time 0
+                      :conn-status :disconnected }))
+
+(defmulti reader-fn (fn [env key params] key))
+
+(defmethod reader-fn :time
+  [{:keys [state] :as env} key params]
+  (:time app-state))
+
+(defmethod reader-fn :conn-status
+  [{:keys [state] :as env} key params]
+  {:value (str(:conn-status @state))})
+
+(defmethod reader-fn :log
+  [{:keys [state] :as env} key params]
+  {:value ["log one", "line 12", "line 3"] })
+
+(defmulti mutate om/dispatch)
+
+(def click->next {:disconnected :connecting
+                  :connecting :disconnecting
+                  :disconnecting :disconnected })
+
+(get click->next :disconnected)
+
+(defmethod mutate 'inc/conn-status
+  [{:keys [state]} y { :keys [conn-status] :as z}]
+  (println @state)
+  (println y)
+  (println z)
+  {:action
+   (fn []
+     (swap! state update-in
+       [:conn-status] #(get click->next %)))})
+
+(defmethod mutate 'set/conn-status
+  [{:keys [state]} action params]
+  {:action
+   (fn []
+     (swap!  state assoc :conn-status (:value params)))})
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; <button type="submit" class="pure-button pure-button-primary">Sign in</button>
+
+(defn input-template [ ]
+  (html
+    [:form {:class "pure-form-stacked"} 
+     [:fieldset
+
+      [:legend "Login"]
+
+      [:input {:type "text" :placeholder "username":ref "name"}]
+
+      [:input {:type "password" :placeholder "password":ref "password"}]
+
+      [:button {:type "submit" :class "pure-button pure-button-primary"} "Sign In"] ] ]))
+
+(defui LoginBox
+  static om/IQuery
+
+  Object
+  (query [this]
+         [:transaction :show-password])
+
+  (render [this]
+          (let [{:keys [transaction] :as props} (om/props this)]
+              
+            )
+          )
+  )
+
+
+(defn login-box [] (om/factory LoginBox))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defui App
+
+  static om/IQuery
+
+  (query [this]
+         [:conn-status])
+
+  Object
+  (render [this]
+          (let [{:keys [conn-status] :as props} (om/props this)]
+            (dom/div nil
+                     (input-template)
+
+                     (dom/div nil
+                              (dom/span nil "connection status ")
+                              (dom/span nil conn-status))
+                     (dom/button
+                       #js {:onClick
+                            (fn [e]
+                              (start-connection))}
+                       "Connect")
+
+                     (dom/button
+                       #js {:onClick
+                            (fn [e]
+                              (client/disconnect! conn ))}
+                       "Disconnect")
+
+                     (dom/button
+                       #js {:onClick
+                            (fn [e]
+                              (om/transact!
+                                this
+                                `[(inc/conn-status ~props)]))}
+                       "Ignore")
+                     ))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(def reconciler
+  (om/reconciler
+    {:state app-state
+     :parser (om/parser {:read reader-fn :mutate mutate})}))
+
+; (make-game)
+
+(comment
+  (om/transact! reconciler `[(set/conn-status {:value :disconnect})]))
+
+
+(defn main []
+  (om/add-root! reconciler
+    App (gdom/getElement "app"))
+  )
+
+(main)
 
 
 

@@ -1,7 +1,7 @@
 (ns client.html
   (:require
     [client.utils :as u]
-    [client.protocols :refer [IRender ]:as p] 
+    [client.protocols :as p] 
 
     [goog.events :as events]
     [goog.dom :as gdom]
@@ -20,13 +20,16 @@
   (hipo/create
     [:canvas#canvas {:width w :height h}]))
 
-(defn add-game-html! [wh]
-  (let [html (mk-game-html wh)
-        game-el (dommy/sel1 "#game") ]
+(defn add-game-html! [div-id]
+  (let [game-el (gdom/getElement div-id) 
+        wh [100 100]
+        html (mk-game-html wh)
+        ]
     (do
-      (dommy/replace-contents! game-el html)
-      {:ctx (.getContext (dommy/sel1 "#canvas") "2d")
-       :html html })))
+      (gdom/replaceNode game-el html)
+      {:ctx (.getContext (gdom/getElement "canvas") "2d")
+       :html html
+       :wh wh })))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -65,14 +68,19 @@
   (mk-msg :resize (u/get-win-dims)))
 
 (def html-events
-  [{:event keydown-events
+  [
+   ;; TODO get events working again
+
+   {:event keydown-events
     :xf (map #(ev->key-event % :keydown)) }
 
    {:event keyup-events
     :xf (map #(ev->key-event % :keyup)) } 
 
    {:event resize-events
-    :xf (map ev->resizer) } ] 
+    :xf (map ev->resizer) }
+   
+   ] 
   )
 
 (defn setup-event [{:keys [event xf]}]
@@ -97,47 +105,59 @@
                   (p/anim-ch sys)
                   (mk-msg :animate (p/now sys))))))
 
-(defn mk-sys-state-atom [im-wh]
-  (let [sys-atom (atom nil)
+(defn mk-sys-state [div-id]
+  (let [game-html (add-game-html! div-id)
+        sys-state (atom nil)
+
         html-events-ch (map setup-event html-events)
-        ev-ch (a/merge html-events )
-        to-close (into [anim-ch ev-ch] html-events-ch) ]
+        ev-ch (a/merge html-events-ch)
+        to-close (into [p/anim-ch ev-ch] html-events-ch)
+        anim-ch (chan (a/dropping-buffer 1))
+        stop-animate (u/animate! (fn []
+                                 (a/put! anim-ch 
+                                          (mk-msg :animate { })) ))
+        to-close  (into [p/anim-ch ev-ch] html-events-ch)
+        ]
 
-    (reset!
-      sys-atom
-      {:wh im-wh
+    {:wh (:wh game-html)
+     :ctx (:ctx game-html)
 
-       :to-close (into [anim-ch ev-ch] html-events-ch)
+     :to-close to-close
 
-       :anim-ch (chan (a/dropping-buffer 1))
+     :anim-ch anim-ch
 
-       :hmtl-events-ch html-events
+     :hmtl-events-ch html-events
 
-       :ev-ch ev-ch
+     :ev-ch (a/chan)
 
-       :state :running
+     :state :running
 
-       :time {:previous nil :now nil}
+     :time {:previous nil :now nil}
 
-       :ctx (:ctx (add-game-html! im-wh))
+     :stop-animate stop-animate
 
-       :stop-animate (u/animate! (fn []
-                                   (comment a/put! (:anim-ch @sys-atom) 
-                                            (mk-msg :animate { })) )) 
+     :stop (fn []
+             (let []
+               (stop-animate)
+               (doseq [ch ()]
+                 (a/close! ch)))
+             (swap! sys-state assoc :state :stopped))
+     }
 
-       :stop (fn []
-               (let [stop-anim (-> :stop-animate @sys-atom)]
-                 (stop-anim)
-                 (doseq [ch (:to-close @sys-atom)]
-                   (a/close! ch)))
-                 (swap! sys-atom assoc :state :stopped))
-       })
+    ))
 
-    sys-atom))
+(defn add-animation [{:keys [sys-state]}]
+  )
 
-(defn mk-sys-obj [sys-state]
+(defrecord HtmlSystem []
+  
 
-  (let [get-ctx (fn [] (:ctx @sys-state ))]
+  )
+
+(defn mk-sys-obj []
+
+  (let [sys-state (atom (mk-sys-state "game"))
+        get-ctx (fn [] (:ctx @sys-state ))]
 
     (reify
       p/IService
@@ -175,13 +195,13 @@
       (events-ch [_] (-> :ev-ch @sys-state))
 
       p/IRender
+
       (resize! [_ wh] (swap! sys-state assoc :wh wh ))
 
       (dims [_] (-> :wh @sys-state))
 
       (reset-transform! [this]
         (.resetTransform (get-ctx) 1 0 0 1 0 0)
-
         this)
 
       (square! [this [x y] [w h] color]
@@ -202,13 +222,11 @@
     ))
 
 (defn mk-system []
-  (let [sys-state (mk-sys-state-atom (u/get-win-dims))
-        sys (mk-sys-obj sys-state) ]
+  (let [sys (mk-sys-obj) ]
     (p/log sys "system made")
     sys))
 
 (comment
-
   
 
   )

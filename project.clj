@@ -7,7 +7,12 @@
   :min-lein-version "2.7.1"
 
   :dependencies [[org.clojure/clojure "1.8.0"]
+
+
+
                  [org.clojure/clojurescript "1.9.229"]
+
+                 [sablono "0.2.3"]
 
                  [prismatic/dommy "1.1.0"]
 
@@ -20,7 +25,7 @@
 
                  [com.taoensso/timbre "4.8.0"]
 
-                 [ org.omcljs/om "1.0.0-alpha34"] 
+                 [org.omcljs/om "1.0.0-alpha34"] 
 
                  [com.stuartsierra/component "0.3.2"]
 
