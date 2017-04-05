@@ -40,7 +40,7 @@
 (defn log-js   [v] (.log js/console v))
 
 (defn to-color [& rgbas]
-  (let [csv (apply str (interpose ", " rgbas))]
+  (let [csv (apply str (interpose ", " (map int rgbas)))]
     (str "rgb(" csv ")")) )
 
 (defn get-win-dims

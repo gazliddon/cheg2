@@ -1,12 +1,13 @@
 (ns client.core
   (:require
+    [client.game :as game]
 
     [sablono.core :as html :refer-macros [html]]
 
     [com.stuartsierra.component :as c]
 
     [servalan.protocols.clientconnection :as client]
-    [client.client :as clientcomp]
+    [client.client :refer [mk-client-component]]
 
     [servalan.messages :refer [mk-msg]]
 
@@ -31,18 +32,55 @@
     [dommy.core             :as dommy :include-macros true]  )
 
   (:require-macros 
-    [servalan.macros :as m]
+    [servalan.macros :as m :refer [dochan]]
     [cljs.core.async.macros :refer [go go-loop]]))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(def config { :conn-config {:url  "ws://localhost:6502"
+                            :ping-frequency 1000 }
+             :html-id "game" })
+
+(defn mk-game [config]
+
+  (c/system-map
+
+    :com-chan (chan)
+
+    :config config
+
+    :system (client-html/mk-html-component (:html-id config))
+
+    :events (client-html/mk-html-events-component )
+
+    :client-connection (mk-client-component (:conn-config config))
+
+    :game (c/using (game/mk-game)
+                          [:client-connection
+                           :events
+                           :system
+                           :config])
+    )
+  )
+(defonce sys-atom (atom nil))
+
+(defn stop []
+ (when @sys-atom
+  (c/stop-system @sys-atom)
+  (reset! sys-atom nil)) )
 
 
+(defn start []
+  (do
 
+    (stop)
 
-
-
-
+    (->>
+      (mk-game config)
+      (c/start-system) 
+      (reset! sys-atom )
+      )
+    )
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -58,9 +96,6 @@
 
 (enable-console-print!)
 
-;; HTML
-
-;; =============================================================================
 (defn on-js-reload []
   ;; optionally touch your app-state to force rerendering depending on
   ;; your application
@@ -137,47 +172,39 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def app-state (atom {:count 0
-                      :time 0
-                      :conn-status :disconnected }))
+(def app-state (atom {:conn-status :disconnected
+                      :game-running false
+                      }))
 
-(defmulti reader-fn (fn [env key params] key))
 
-(defmethod reader-fn :time
-  [{:keys [state] :as env} key params]
-  (:time app-state))
+(defmulti reader-fn om/dispatch)
 
-(defmethod reader-fn :conn-status
-  [{:keys [state] :as env} key params]
-  {:value (str(:conn-status @state))})
+(defmethod reader-fn :default
+ [{:keys [state]} k _]
+  (let [st @state] ;; CACHING!!!
+    (if (contains? st k)
+      {:value (get st k)})))
 
-(defmethod reader-fn :log
-  [{:keys [state] :as env} key params]
-  {:value ["log one", "line 12", "line 3"] })
 
-(defmulti mutate om/dispatch)
+; (defmethod reader-fn :conn-status
+;   [{:keys [state] :as env} key params]
+;   {:value (str(:conn-status @state))})
 
-(def click->next {:disconnected :connecting
-                  :connecting :disconnecting
-                  :disconnecting :disconnected })
 
-(get click->next :disconnected)
+; (defmethod reader-fn :game-running
+;   [{:keys [state] :as env} key params]
+;   {:value (:game-running @state)})
 
-(defmethod mutate 'inc/conn-status
-  [{:keys [state]} y { :keys [conn-status] :as z}]
-  (println @state)
-  (println y)
-  (println z)
-  {:action
-   (fn []
-     (swap! state update-in
-       [:conn-status] #(get click->next %)))})
 
-(defmethod mutate 'set/conn-status
-  [{:keys [state]} action params]
-  {:action
-   (fn []
-     (swap!  state assoc :conn-status (:value params)))})
+(defmulti mutate-fn om/dispatch)
+
+(defmethod mutate-fn `game/start
+  [{:keys [state]} _ params]
+  {:action (fn[] (swap! state assoc :game-running true))})
+
+(defmethod mutate-fn `game/stop
+  [{:keys [state]} _ params]
+  {:action (fn [] (swap! state assoc :game-running false)) })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; <button type="submit" class="pure-button pure-button-primary">Sign in</button>
@@ -204,7 +231,6 @@
 
   (render [this]
           (let [{:keys [transaction] :as props} (om/props this)]
-              
             )
           )
   )
@@ -214,97 +240,48 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn mk-button [this txt transaction action]
+  (dom/button
+    #js {:class "pure-button pure-button-primary" 
+         :onClick (fn [e]
+                    (action)
+                    (om/transact! this transaction))}
+    txt))
+
 (defui App
 
   static om/IQuery
 
   (query [this]
-         [:conn-status])
 
+         [:game-running])
   Object
+
   (render [this]
-          (let [{:keys [conn-status] :as props} (om/props this)]
+          (let [{:keys [game-running] :as props} (om/props this)]
+
             (dom/div nil
-                     (input-template)
-
-                     (dom/div nil
-                              (dom/span nil "connection status ")
-                              (dom/span nil conn-status))
-                     (dom/button
-                       #js {:onClick
-                            (fn [e]
-                              (comment start-connection))}
-                       "Connect")
-
-                     (dom/button
-                       #js {:onClick
-                            (fn [e]
-                              (comment client/disconnect! conn ))}
-                       "Disconnect")
-
-                     (dom/button
-                       #js {:onClick
-                            (fn [e]
-                              (om/transact!
-                                this
-                                `[(inc/conn-status ~props)]))}
-                       "Ignore")
+                     (if game-running
+                       (mk-button this "stop game" `[(game/stop ~props)] stop)
+                       (mk-button this "start game" `[(game/start ~props)] start))
                      ))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord Game [started client-connection system html-events config]
-  c/Lifecycle
-
-  (start [this]
-    )
-
-  (stop [this]
-    )
-  )
-
-(def config { :conn-config {:url  "ws://localhost:6502"
-                            :ping-frequency 1000 }
-             :html-id "game" })
-
-(defn mk-game [config]
-
-  (c/system-map
-
-    :com-chan (chan)
-
-    :config config
-
-    :html-events (client-html/mk-html-events-component)
-
-    :system (client-html/mk-html-component (:html-id config))
-
-    :client-connection (clientcomp/mk-client-component (:conn-config config))
-
-    :game (c/using (map->Game {}) 
-                          [:client-connection
-                           :html-events
-                           :system
-                           :config])))
-
 (def reconciler
+
   (om/reconciler
     {:state app-state
-     :parser (om/parser {:read reader-fn :mutate mutate})}))
-
+     :parser (om/parser {:read reader-fn :mutate mutate-fn})}))
 
 (defn main []
   (let [app-el (gdom/getElement "app")
         game-el (gdom/getElement "game") ]
 
-    (do
-      (om/add-root! reconciler
-                    App app-el)
-      )
-    )
-  )
+    (om/add-root! reconciler
+                  App app-el)))
 
+(stop)
 (main)
 
 

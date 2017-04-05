@@ -38,7 +38,9 @@
 
 (defn add-game-html! [game-el]
 
-  (let [wh [100 100]
+  (let [wh [(.-offsetWidth game-el )
+            500 ]
+
         canvas-html (make-canvas-html wh) ]
 
     (do
@@ -49,6 +51,7 @@
       {:ctx (.getContext canvas-html "2d")
        :html canvas-html
        :wh wh })))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Events
@@ -115,10 +118,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn animate! [cbfunc pred]
-  (when (pred)
-    (.requestAnimationFrame js/window #(animate! cbfunc pred))
-    (cbfunc)))
+(defn animate! [cbfunc]
+  (when (cbfunc)
+    (.requestAnimationFrame js/window #(animate! cbfunc))))
   
    
 (defn mk-animator-channel
@@ -134,29 +136,27 @@
 
         writer (chan)
 
-        params  {:on-close #(reset! running? false)}
+        stop-fn (fn [] (reset! running? false))
+
+        params  {:on-close stop-fn}
 
         bi-chan (su/bidi-ch reader writer params) ]
     (do
+
       ;; Close if anything written to me
       (go
         (<! writer)
-        (reset! running? false))
+        (stop-fn))
 
       ;; put a value onto the channel every
       ;; refresh until we're not running any more
+      (animate! (fn []
+                  (when @running?
+                    (put! reader :anim) 
+                    true)))
 
-      (animate!
-        (fn []
-          (put! reader :anim))
-        (fn []
-          @running?))
+      bi-chan)))
 
-      bi-chan
-      )
-
-    )
-  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -164,19 +164,26 @@
   c/Lifecycle
 
   (start [this]
-    (let [this (c/stop this)
-          html-events-channels (map setup-event html-events) ]
+    (do
 
-      (assoc this
-             :started true
-             :anim-ch (mk-animator-channel)
-             :ev-ch (a/merge html-events-channels)
-             :html-events-channels html-events-channels)))
+      (let [this (c/stop this)
+            html-events-channels (map setup-event html-events)
+            ret (assoc this
+                       :started true
+                       :anim-ch (mk-animator-channel)
+                       :ev-ch (a/merge html-events-channels)
+                       :html-events-channels html-events-channels)
+            ]
+        ret)))
 
   (stop [this]
 
+
     (do
       (when started
+
+
+        (put! anim-ch :stop)
         (close! anim-ch)
         (close! ev-ch)
         (doseq [c html-events-channels]
@@ -185,7 +192,7 @@
       (assoc this
              :started nil
              :html-events-channels nil
-             :anim-ch nil
+             :anim-ch  nil
              :ev-ch nil)))
 
   p/IEvents
@@ -242,11 +249,12 @@
 
   (square! [this [x y] [w h] color]
     (do
-      (set! (.-fillStyle ctx) (apply u/to-color color))
       (.save ctx)
+      (set! (.-fillStyle ctx) (apply u/to-color color))
       (.resetTransform ctx 1 0 0 1 0 0)
       (.fillRect ctx x y w h)
-      (.restore ctx))  
+      (.restore ctx)
+      )  
     nil) 
 
   (clear-all! [this color]
