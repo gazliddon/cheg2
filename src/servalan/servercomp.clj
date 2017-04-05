@@ -2,6 +2,7 @@
   (:require 
     [taoensso.timbre :as t ]
 
+    [servalan.messages :refer [mk-msg]]
     [servalan.protocols.connections :as IConns]
     [servalan.protocols.connection :as IConn]
     [servalan.connection :as c]
@@ -153,12 +154,15 @@
 
       (IConns/clean-up! this)
 
-      (let [has-con (->>
+      (let [id (:id conn)
+            has-con (->>
                       (:id conn)
                       (has-connection? @connections-atom))]
         (when-not has-con
+
           (swap! connections-atom assoc (:id conn) conn)
-          (t/info "number of connections: " (count @connections-atom)))
+
+          (IConns/send! this id (mk-msg :random {} 0)))
 
         nil)))
 
@@ -197,7 +201,10 @@
     (if-not server-inst
       (let [handler (fn [req]
                       (let [conn (c/mk-connection-process req)]
-                        (IConns/add! connections conn))) ]
+                        (IConns/add! connections conn)
+                        (IConn/command! conn (mk-msg :joined {} 0))
+                        
+                        )) ]
 
         (t/info "starting server component")
 

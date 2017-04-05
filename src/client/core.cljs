@@ -56,9 +56,7 @@
 
     :client-connection (c/using
                         ( mk-client-component (:conn-config config) )
-                        [:com-chan]
-                        
-                        )
+                        [:com-chan])
 
     :game (c/using (game/mk-game)
                           [:client-connection
@@ -67,6 +65,7 @@
                            :config])
     )
   )
+
 (defonce sys-atom (atom nil))
 
 (defn stop []

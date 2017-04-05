@@ -59,7 +59,7 @@
     (fsm/event! this :done payload))
 
   (has-connected [this payload]
-    (t/info "STATE: has-connecting") )
+    (t/info "STATE: has-connected") )
 
   (is-disconnecting [this payload]
     (t/info "STATE: is-disconnecting")  
@@ -71,8 +71,7 @@
     (connection/close! this))
 
   (handling-client-msg [this payload]
-    (t/info payload)
-    (t/info "STATE: handling-client-msg ")
+    (t/info "STATE: handling-client-msg")
     (fsm/event! this :done payload) )
 
   (handling-server-msg [this payload]
@@ -94,7 +93,7 @@
     (a/put! com-chan msg))
 
   (is-connected? [_]
-    (let [st (fsm/get-state fsm)]
+    (let [ st (fsm/get-state fsm)]
      (not= (or
             (= st is-disconnecting )
             (= has-disconnected :none)))))
@@ -111,7 +110,6 @@
           (let [ev-record {:old-state old-state
                            :state new-state
                            :event ev}]
-            (t/info (str old-state) " -> " (str new-state))
             (new-state this payload)))  
         )))
 
@@ -171,19 +169,21 @@
 
       ;; from client
       (go-loop []
-               (if-let [{:keys [error] :as msg} (<! ws-channel)]
+               (if-let [{:keys [error] :as msg-raw} (<! ws-channel) ]
                  (if error
                    (stop-fn "error from websocket channel")
+
                    (do
-                     (ev-fn :client-message msg)
+                     (ev-fn :client-message (-> msg-raw :msg :message))
                      (recur)))
                  (do
                    (stop-fn "web socket channel returned nil"))))
 
       ;; from server / player
       (dochan [msg com-chan]
-              (t/log "got msg" msg)
-              (ev-fn (:event msg ) msg ))
+              (t/info "got an internal msg -> " msg)
+              (ev-fn (:type msg ) (:payload msg) ) 
+              )
       conn)
     
     ))

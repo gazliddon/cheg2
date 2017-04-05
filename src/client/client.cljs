@@ -39,12 +39,18 @@
         (<! kill-chan)
         (kill-function state ws-channel kill-chan "kill chan"))
 
-      (chandler [{:keys [error] :as msg} ws-channel]
-                :on-message (if error
-                              (kill-function state ws-channel kill-chan (str "ws channel error: " error ))
-                              (comment handle-msg!  (assoc msg :ws-channel ws-channel) ))
+      (chandler
+        [{:keys [error] :as msg} ws-channel]
 
-                :on-close (kill-function state ws-channel kill-chan "ws channel nil"))
+        :on-message (if error
+                      (kill-function state ws-channel kill-chan (str "ws channel error: " error ))
+                      (do
+                        (println msg)
+                        (>! com-chan (mk-msg :ping {} 0))
+                        (comment handle-msg! (assoc msg :ws-channel ws-channel) ) 
+                        ))
+
+        :on-close (kill-function state ws-channel kill-chan "ws channel nil"))
 
       (dochan [message com-chan]
               (>! ws-channel message))))) 
