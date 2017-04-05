@@ -18,8 +18,8 @@
 
   "bi directional channel"
   
-  
   [read-ch write-ch & [{:keys [on-close]}]]
+
   (reify
     p/ReadPort
     (take! [_ handler]

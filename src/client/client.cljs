@@ -27,8 +27,7 @@
       (println (str "actually closing for : " reason))
       (put! ws-channel (mk-msg :disconnect {} 0))
       (kill-chans! ws-channel kill-chan)
-      (reset! state :disconnected)) 
-    ))
+      (reset! state :disconnected)) ))
 
 
 (defn run-connection-proccess [state ws-channel kill-chan com-chan ]
@@ -54,24 +53,21 @@
 (defn make-connection-process
   [url state kill-chan com-chan]
 
-  (try
-    (let [ch (wsockets/ws-ch url)]
-      (go
-        (let [{:keys [ws-channel error] :as k} (<! ch)]
+  (let [ch (wsockets/ws-ch url)]
+    (go
+      (let [{:keys [ws-channel error] :as k} (<! ch)]
 
-          (if error
-            (do
-              (println "ERROR")
-              (reset! state :disconnected))
-              
-            (run-connection-proccess state ws-channel kill-chan com-chan))))) 
-    (finally
-      (println "fucked!")))
+        (if error
+
+          (do
+            (println "ERROR")
+            (reset! state :disconnected))
+
+          (run-connection-proccess state ws-channel kill-chan com-chan))))) 
 
   nil)
 
-
-(defrecord ClientConnection [com-chan
+(defrecord ClientComponent [com-chan
                              kill-chan
                              config
                              state]
@@ -118,9 +114,8 @@
                :kill-chan nil))
       this)))
 
-(defn mk-client-connectiom []
- (map->ClientConnection { }))
-
+(defn mk-client-component [config]
+ (map->ClientComponent {:config config }))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -142,9 +137,6 @@
                      :com-chan ::chan)
         :ret nil?)
 
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

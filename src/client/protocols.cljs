@@ -19,12 +19,4 @@
 (defprotocol ILog
   (log [this m ]))
 
-(defprotocol IService
-  (start! [_])
-  (stop! [_])
-  (running? [_])
-  (state [_]))
 
-(defprotocol IGameLoop
-  
-  )

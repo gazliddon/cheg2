@@ -34,45 +34,15 @@
     [servalan.macros :as m]
     [cljs.core.async.macros :refer [go go-loop]]))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(def connnection-config { :url "ws://localhost:6502"
-                          :retry? true
-                          :wait 1000 })
-
-(def config { :url  "ws://localhost:6502" })
-(def kill-chan (chan))
-(def com-chan (chan))
-
-(defrecord Game [])
-
-(defn mk-game-system [config com-chan kill-chan]
-
-  (c/system-map
-
-    :com-chan com-chan
-
-    :config config
-
-    :kill-chan kill-chan
-
-    :html :html
-
-    :client-connection (c/using (clientcomp/map->ClientConnection {}) 
-                          [:config :com-chan])
-
-    :game  (c/using (map->Game {})
-                    [:client-connection :config])
-    )
-  )
-
-(def sys-obj (mk-game-system config com-chan kill-chan ))
-(def sys (c/start-system sys-obj))
-(def conn (:client-connection sys))
-
-(defn start-connection []
-    (client/connect! conn ))
 
 
-(a/put! kill-chan :done)
+
+
+
+
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -164,18 +134,6 @@
       (square! renderer (:pos new-player) [10 10] [255 255 255] )
       (reset! player new-player))))
 
-(defn make-game []
-  (let  [ sys (client-html/mk-system) ]
-    (go
-      (loop []
-        (let [m (<! (p/events-ch sys))]
-
-          (case (:type m)
-            :animate nil
-            :resize (println "resize"))
-          
-         (recur))))
-    sys))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -275,13 +233,13 @@
                      (dom/button
                        #js {:onClick
                             (fn [e]
-                              (start-connection))}
+                              (comment start-connection))}
                        "Connect")
 
                      (dom/button
                        #js {:onClick
                             (fn [e]
-                              (client/disconnect! conn ))}
+                              (comment client/disconnect! conn ))}
                        "Disconnect")
 
                      (dom/button
@@ -294,21 +252,57 @@
                      ))))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defrecord Game [started client-connection system html-events config]
+  c/Lifecycle
+
+  (start [this]
+    )
+
+  (stop [this]
+    )
+  )
+
+(def config { :conn-config {:url  "ws://localhost:6502"
+                            :ping-frequency 1000 }
+             :html-id "game" })
+
+(defn mk-game [config]
+
+  (c/system-map
+
+    :com-chan (chan)
+
+    :config config
+
+    :html-events (client-html/mk-html-events-component)
+
+    :system (client-html/mk-html-component (:html-id config))
+
+    :client-connection (clientcomp/mk-client-component (:conn-config config))
+
+    :game (c/using (map->Game {}) 
+                          [:client-connection
+                           :html-events
+                           :system
+                           :config])))
+
 (def reconciler
   (om/reconciler
     {:state app-state
      :parser (om/parser {:read reader-fn :mutate mutate})}))
 
-; (make-game)
-
-(comment
-  (om/transact! reconciler `[(set/conn-status {:value :disconnect})]))
-
 
 (defn main []
-  (om/add-root! reconciler
-    App (gdom/getElement "app"))
+  (let [app-el (gdom/getElement "app")
+        game-el (gdom/getElement "game") ]
+
+    (do
+      (om/add-root! reconciler
+                    App app-el)
+      )
+    )
   )
 
 (main)

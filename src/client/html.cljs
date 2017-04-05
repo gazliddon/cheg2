@@ -1,6 +1,8 @@
 (ns client.html
   (:require
+    [servalan.utils :as su]
     [client.utils :as u]
+    [com.stuartsierra.component :as c]
     [client.protocols :as p] 
 
     [goog.events :as events]
@@ -9,28 +11,44 @@
     [hipo.core              :as hipo  :include-macros true]
     [dommy.core             :as dommy :include-macros true]   
 
-    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]))
+    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
+
+  (:require-macros 
+    [servalan.macros :as m]
+    [cljs.core.async.macros :refer [go go-loop]])
+
+  )
 
 (enable-console-print!)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Canvas stuff
 
-(defn mk-game-html [[ w h ]]
+(defn make-canvas-html [[ w h ]]
   (hipo/create
     [:canvas#canvas {:width w :height h}]))
 
-(defn add-game-html! [div-id]
-  (let [game-el (gdom/getElement div-id) 
-        wh [100 100]
-        html (mk-game-html wh)
-        ]
-    (do
-      (gdom/replaceNode game-el html)
-      {:ctx (.getContext (gdom/getElement "canvas") "2d")
-       :html html
-       :wh wh })))
+(defn find-canvas []
+ (gdom/getElement "canvas") )
 
+(defn remove-game-html! [game-el]
+  ;; TODO only get the canvas in the game el
+  (gdom/removeNode (find-canvas))
+  )
+
+(defn add-game-html! [game-el]
+
+  (let [wh [100 100]
+        canvas-html (make-canvas-html wh) ]
+
+    (do
+      (gdom/removeNode (find-canvas))
+
+      (gdom/appendChild game-el canvas-html )
+
+      {:ctx (.getContext canvas-html "2d")
+       :html canvas-html
+       :wh wh })))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Events
@@ -69,8 +87,6 @@
 
 (def html-events
   [
-   ;; TODO get events working again
-
    {:event keydown-events
     :xf (map #(ev->key-event % :keydown)) }
 
@@ -97,136 +113,152 @@
     0))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn animate-sys
-  "add .requestAnimationFrame events"
-  [sys]
-  (u/animate! (fn []
-                (a/put!
-                  (p/anim-ch sys)
-                  (mk-msg :animate (p/now sys))))))
 
-(defn mk-sys-state [div-id]
-  (let [game-html (add-game-html! div-id)
-        sys-state (atom nil)
 
-        html-events-ch (map setup-event html-events)
-        ev-ch (a/merge html-events-ch)
-        to-close (into [p/anim-ch ev-ch] html-events-ch)
-        anim-ch (chan (a/dropping-buffer 1))
-        stop-animate (u/animate! (fn []
-                                 (a/put! anim-ch 
-                                          (mk-msg :animate { })) ))
-        to-close  (into [p/anim-ch ev-ch] html-events-ch)
-        ]
-
-    {:wh (:wh game-html)
-     :ctx (:ctx game-html)
-
-     :to-close to-close
-
-     :anim-ch anim-ch
-
-     :hmtl-events-ch html-events
-
-     :ev-ch (a/chan)
-
-     :state :running
-
-     :time {:previous nil :now nil}
-
-     :stop-animate stop-animate
-
-     :stop (fn []
-             (let []
-               (stop-animate)
-               (doseq [ch ()]
-                 (a/close! ch)))
-             (swap! sys-state assoc :state :stopped))
-     }
-
-    ))
-
-(defn add-animation [{:keys [sys-state]}]
-  )
-
-(defrecord HtmlSystem []
+(defn animate! [cbfunc pred]
+  (when (pred)
+    (.requestAnimationFrame js/window #(animate! cbfunc pred))
+    (cbfunc)))
   
+   
+(defn mk-animator-channel
 
+  "returns a bi-directional channel
+  that sends messages at the refresh rate"
+
+  []
+
+  (let [running? (atom true)
+
+        reader (a/chan (a/dropping-buffer 1))
+
+        writer (chan)
+
+        params  {:on-close #(reset! running? false)}
+
+        bi-chan (su/bidi-ch reader writer params) ]
+    (do
+      ;; Close if anything written to me
+      (go
+        (<! writer)
+        (reset! running? false))
+
+      ;; put a value onto the channel every
+      ;; refresh until we're not running any more
+
+      (animate!
+        (fn []
+          (put! reader :anim))
+        (fn []
+          @running?))
+
+      bi-chan
+      )
+
+    )
   )
 
-(defn mk-sys-obj []
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (let [sys-state (atom (mk-sys-state "game"))
-        get-ctx (fn [] (:ctx @sys-state ))]
+(defrecord HtmlEventsComponent [started html-events-channels anim-ch ev-ch]
+  c/Lifecycle
 
-    (reify
-      p/IService
+  (start [this]
+    (let [this (c/stop this)
+          html-events-channels (map setup-event html-events) ]
 
-      (start! [this])
+      (assoc this
+             :started true
+             :anim-ch (mk-animator-channel)
+             :ev-ch (a/merge html-events-channels)
+             :html-events-channels html-events-channels)))
 
-      (stop! [this]
-        ( (-> :stop @sys-state) )
-        (swap! sys-state assoc :state :stopped))
+  (stop [this]
 
-      (running? [this]
-        (not= (p/state this) :stopped))
+    (do
+      (when started
+        (close! anim-ch)
+        (close! ev-ch)
+        (doseq [c html-events-channels]
+          (close! c)))
 
-      (state [_]
-        (-> :state @sys-state ))
+      (assoc this
+             :started nil
+             :html-events-channels nil
+             :anim-ch nil
+             :ev-ch nil)))
 
-      p/ITimer
+  p/IEvents
 
-      (from-seconds [this s] (+ (* 1000 s) ))
+  (anim-ch [_]
+    anim-ch)
 
-      (now [_] (.now (aget js/window "performance")))
+  (events-ch [_]
+    ev-ch))
 
-      (tick! [this]
-        (do
-          (let [now (p/now this)]
-            (->>
-              (swap! sys-state assoc :time {
-                                            :previous (-> :time :now @sys-state)
-                                            :now (p/now this) }))
-            (time-passed (:time @sys-state)))))
+(defn mk-html-events-component []
+  (map->HtmlEventsComponent {}))
 
-      p/IEvents
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; handles building html, rendering, logging
 
-      (anim-ch [_] (-> :anim-ch @sys-state ))
-      (events-ch [_] (-> :ev-ch @sys-state))
+(defrecord HtmlComponent [started ctx id wh-atom game-el]
 
-      p/IRender
+  c/Lifecycle
 
-      (resize! [_ wh] (swap! sys-state assoc :wh wh ))
+  (start [this]
 
-      (dims [_] (-> :wh @sys-state))
+    (let [this (c/stop this)
+          game-el (gdom/getElement id)
+          game-html (add-game-html! game-el)]
 
-      (reset-transform! [this]
-        (.resetTransform (get-ctx) 1 0 0 1 0 0)
-        this)
+      (assoc this
+             :started true
+             :ctx (:ctx game-html)
+             :wh-atom (atom (:wh game-html))   
+             :game-el game-el)))
 
-      (square! [this [x y] [w h] color]
-        (let [ctx (get-ctx)]
-          (.save ctx)
-          (set! (.-fillStyle ctx) (apply u/to-color color))
-          (.resetTransform ctx 1 0 0 1 0 0)
-          (.fillRect ctx x y w h)
-          (.restore ctx))  
-        this) 
+  (stop [this]
+    (when started
+      (remove-game-html! game-el))
 
-      (clear-all! [this color]
-        (p/square! this [0 0] (p/dims this) color))
+    (assoc this
+           :started nil
+           :ctx nil
+           :wh-atom nil
+           :game-el nil))
 
-      p/ILog
-      (log [_ v]
-        (u/log-js v)))
-    ))
+  p/IRender
 
-(defn mk-system []
-  (let [sys (mk-sys-obj) ]
-    (p/log sys "system made")
-    sys))
+  (resize! [_ wh]
+    (reset! wh-atom wh)
+    (assert false))
 
-(comment
-  
+  (dims [_] @wh-atom)
 
+  (reset-transform! [this]
+    (.resetTransform ctx 1 0 0 1 0 0)
+    nil)
+
+  (square! [this [x y] [w h] color]
+    (do
+      (set! (.-fillStyle ctx) (apply u/to-color color))
+      (.save ctx)
+      (.resetTransform ctx 1 0 0 1 0 0)
+      (.fillRect ctx x y w h)
+      (.restore ctx))  
+    nil) 
+
+  (clear-all! [this color]
+    (p/square! this [0 0] (p/dims this) color))
+
+  p/ILog
+  (log [_ v]
+    (u/log-js v)) 
   )
+
+(defn mk-html-component [id]
+  (map->HtmlComponent {:id id}))
+
+
+
