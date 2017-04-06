@@ -146,7 +146,7 @@
       ;; Close if anything written to me
       (go
         (<! writer)
-        (stop-fn))
+        (close! bi-chan))
 
       ;; put a value onto the channel every
       ;; refresh until we're not running any more
@@ -164,30 +164,27 @@
   c/Lifecycle
 
   (start [this]
-    (do
+    (let [this (c/stop this)
+          html-events-channels (map setup-event html-events) ]
 
-      (let [this (c/stop this)
-            html-events-channels (map setup-event html-events)
-            ret (assoc this
-                       :started true
-                       :anim-ch (mk-animator-channel)
-                       :ev-ch (a/merge html-events-channels)
-                       :html-events-channels html-events-channels)
-            ]
-        ret)))
+      (assoc this
+             :started true
+             :anim-ch (mk-animator-channel)
+             :ev-ch (a/merge html-events-channels)
+             :html-events-channels html-events-channels)))
 
   (stop [this]
 
 
     (do
       (when started
-
-
+        ;; Anim-ch self closes when a value
         (put! anim-ch :stop)
-        (close! anim-ch)
-        (close! ev-ch)
+
+        ;; ev-ch will automatically close after source
+        ;; channels closes
         (doseq [c html-events-channels]
-          (close! c)))
+          (close! c)) )
 
       (assoc this
              :started nil

@@ -16,17 +16,18 @@
 
 
 (defn kill-chans! [ & chans]
-  (doseq [c chans]
-    (close! c)))
+  (when chans
+    (doseq [c chans]
+      (close! c)) ))
 
-(defn kill-function [state ws-channel kill-chan reason]
+(defn kill-function [state reason & chans]
   (do
     (println (str "trying closing for : " reason))
 
     (when (= :connected @state )
       (println (str "actually closing for : " reason))
-      (put! ws-channel (mk-msg :disconnect {} 0))
-      (kill-chans! ws-channel kill-chan)
+      (apply kill-chans! chans)
+      (println (str "done actually closing for : " reason))
       (reset! state :disconnected)) ))
 
 (defonce clock (atom 0))
@@ -42,19 +43,18 @@
 
       (go
         (<! kill-chan)
-        (kill-function state ws-channel kill-chan "kill chan"))
+        (put! ws-channel (mk-msg :disconnect {} 0))
+        (kill-function state "kill chan" ws-channel kill-chan))
 
       (chandler
         [{:keys [error] :as msg} ws-channel]
 
         :on-message (if error
-                      (kill-function state ws-channel kill-chan (str "ws channel error: " error ))
+                      (kill-function state (str "ws channel error: " error ) ws-channel kill-chan )
                       (do
                         (println (str "got msg -> " msg))
-                        (comment handle-msg! (assoc msg :ws-channel ws-channel) ) 
-                        ))
-
-        :on-close (kill-function state ws-channel kill-chan "ws channel nil"))
+                        (comment handle-msg! (assoc msg :ws-channel ws-channel))))
+        :on-close (kill-function state "ws-channel nil" ) )
 
       (go-loop
         []
@@ -63,8 +63,14 @@
           (<! (a/timeout 3000) )
           (recur)))
 
-      (dochan [message com-chan]
-              (>! ws-channel message))))) 
+      (go-loop
+        []
+        (when (= @state :connected)
+          (->>
+            (<! com-chan)
+            (>! ws-channel ))
+          (recur)))
+      )))
 
 
 (defn make-connection-process
@@ -111,7 +117,6 @@
         (client/disconnect! this))
 
       (make-connection-process (:url config) state kill-chan com-chan)
-      (put! com-chan (mk-msg :ping {} 0))
       )
     )
 
@@ -127,8 +132,9 @@
   (stop [this]
     (if state
       (do
-        (put! kill-chan :done)
-        (close! kill-chan)
+
+        (client/disconnect! this)
+
         (assoc this
                :state nil
                :kill-chan nil))
