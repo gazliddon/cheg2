@@ -19,4 +19,6 @@
 (defprotocol ILog
   (log [this m ]))
 
+(defprotocol IStatus
+  (get-status [_]))
 

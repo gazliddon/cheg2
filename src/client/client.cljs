@@ -28,7 +28,11 @@
       (put! ws-channel (mk-msg :disconnect {} 0))
       (kill-chans! ws-channel kill-chan)
       (reset! state :disconnected)) ))
-
+(defonce clock (atom 0))
+(defn get-time []
+  (swap! clock inc)
+  @clock
+  )
 
 (defn run-connection-proccess [state ws-channel kill-chan com-chan ]
   (let [kill-fn (partial kill-function state ws-channel kill-chan)]
@@ -45,8 +49,9 @@
         :on-message (if error
                       (kill-function state ws-channel kill-chan (str "ws channel error: " error ))
                       (do
-                        (println msg)
-                        (>! com-chan (mk-msg :ping {} 0))
+                        (println (str "got msg -> " msg))
+
+                        (>! com-chan (mk-msg :ping {:hello "sasa"} (get-time)))
                         (comment handle-msg! (assoc msg :ws-channel ws-channel) ) 
                         ))
 
@@ -64,7 +69,6 @@
       (let [{:keys [ws-channel error] :as k} (<! ch)]
 
         (if error
-
           (do
             (println "ERROR")
             (reset! state :disconnected))
@@ -93,13 +97,17 @@
     nil)
 
   (connect! [this]
-    (println (str "trying to start conneciton to " (:url config)) )
+    (do
+      (println (str "trying to start conneciton to " (:url config)) )
 
-    (when (= :connected (client/state? this))
-      (println "disconnecting first")
-      (client/disconnect! this))
+      (when (= :connected (client/state? this))
+        (println "disconnecting first")
+        (client/disconnect! this))
 
-    (make-connection-process (:url config) state kill-chan com-chan))
+      (make-connection-process (:url config) state kill-chan com-chan)
+      (put! com-chan (mk-msg :ping {} 0))
+      )
+    )
 
   c/Lifecycle
   (start [this]

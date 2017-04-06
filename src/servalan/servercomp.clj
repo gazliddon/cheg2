@@ -202,7 +202,6 @@
       (let [handler (fn [req]
                       (let [conn (c/mk-connection-process req)]
                         (IConns/add! connections conn)
-                        (IConn/command! conn (mk-msg :joined {} 0))
                         
                         )) ]
 
