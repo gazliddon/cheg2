@@ -23,22 +23,26 @@
     [client.macros :as m :refer [dochan chandler]]
     [cljs.core.async.macros :refer [go go-loop]]))
 
+(enable-console-print!)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn close-chans!
   "close any of the chans in the vec of chah-keys
   return a hash with closed channels removed"
 
   [chans-hash & chan-keys]
+  (println (str "closing " chan-keys))
 
   (if chan-keys
     (->
-      (fn [xs x]
-        (if (get xs x)
+      (fn [res k]
+        (if-let [ ch (get res k)] 
           (do
-            (a/close! x)
-            (dissoc xs x))
-          xs)
-        reduce chans-hash chan-keys))
+            (println (str "closing " k))
+            (a/close! ch)
+            (dissoc res k))
+          res))
+        (reduce chans-hash chan-keys))
     chan-keys))
 
 (defn close-all-chans! [chans-hash]
@@ -117,18 +121,14 @@
     (fsm/event! this :done {} )))
 
 (defmethod new-state :is-disconnecting
-  [this ev payload]
+  [{:keys [connection config] :as this} ev payload]
+  (swap! connection close-all-chans!)
   (fsm/event! this :done {} ))
 
 (defmethod new-state :is-killing-connection
   [{:keys [connection config] :as this} ev payload]
   (swap! connection close-all-chans!)
   (fsm/event! this :done {} ))
-
-(defmethod new-state :is-handling-socket-error
-  [{:keys [connection config] :as this} ev payload]
-  (swap! connection close-all-chans!)
-  (fsm/event! this :done this))
 
 (defmethod new-state :is-handling-socket-error
   [{:keys [connection config] :as this} ev payload]
@@ -162,8 +162,10 @@
 
             ;; handle the kill chan
 
-            (dochan [msg kill-chan]
-                  (fsm/event! this :kill-connection {}))
+            (dochan
+              [msg kill-chan]
+              (swap! connection close-all-chans!)
+              (fsm/event! this :kill-connection {}))
 
             ;; handle incoming events
 
@@ -173,6 +175,7 @@
                   (do
                     (t/error "error")
                     (t/info raw-message )
+                    (swap! connection close-all-chans!)
                     (fsm/event! this :remote-socket-error {}))
 
                   (do
@@ -182,7 +185,7 @@
                 (do 
                   ;; remove without closing the ws-channel
                   ;; it's already closed if we got here
-                  (swap! connection dissoc :ws-channel)
+                  (swap! connection close-all-chans!)
                   (fsm/event! this :remote-socket-closed {}))))))))))
 
 (defmethod new-state :has-connected
@@ -238,23 +241,24 @@
   c/Lifecycle
 
   (start [this]
-
     (if connection
       this
 
-      ;; this is overly tricksy
-
       (let [conn-atom (atom nil)
+
             fsm-atom (atom nil)
+
             this (assoc this 
                         :connection conn-atom
-                        :fsm  fsm-atom)]
+                        :fsm  fsm-atom)
+
+            dispatcher (fn [ev payload]
+                         (println ev)
+                         (new-state this ev payload)) ]
         (do
           (reset! fsm-atom (fsm/mk-state-machine
                              conn-state-table
-                             (fn [ev payload]
-                               (println ev)
-                               (new-state this ev payload))))
+                             dispatcher))
           this))))
 
   (stop [this]

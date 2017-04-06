@@ -111,13 +111,13 @@
   IGame
 
   (on-network [this msg]
-    (t/info " recived network msg " msg))
+    (t/info " received network msg " msg))
 
   (on-update [_ t ]
     (print! system t))
 
   (on-message [_ msg] 
-    (t/info "received html event" msg))
+    )
 
   c/Lifecycle
 

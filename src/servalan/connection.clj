@@ -86,16 +86,13 @@
   connection/IConnection
 
   (disconnect! [this]
-    (println "graceful disconnect")
     (fsm/event! this :disconnect {}))
 
   (close! [this]
     (do
-      (println "hard close")
       (a/put! kill-chan :disconnect)))
 
   (command! [this msg]
-    (println (str "local msg" msg))
     (fsm/event! this :local-message msg))
 
   (is-connected? [_]
