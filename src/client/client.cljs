@@ -28,11 +28,12 @@
       (put! ws-channel (mk-msg :disconnect {} 0))
       (kill-chans! ws-channel kill-chan)
       (reset! state :disconnected)) ))
+
 (defonce clock (atom 0))
+
 (defn get-time []
   (swap! clock inc)
-  @clock
-  )
+  @clock)
 
 (defn run-connection-proccess [state ws-channel kill-chan com-chan ]
   (let [kill-fn (partial kill-function state ws-channel kill-chan)]
@@ -50,12 +51,17 @@
                       (kill-function state ws-channel kill-chan (str "ws channel error: " error ))
                       (do
                         (println (str "got msg -> " msg))
-
-                        (>! com-chan (mk-msg :ping {:hello "sasa"} (get-time)))
                         (comment handle-msg! (assoc msg :ws-channel ws-channel) ) 
                         ))
 
         :on-close (kill-function state ws-channel kill-chan "ws channel nil"))
+
+      (go-loop
+        []
+        (when (= @state :connected)
+          (>! com-chan (mk-msg :ping {:hello "sasa"} (get-time)))
+          (<! (a/timeout 3000) )
+          (recur)))
 
       (dochan [message com-chan]
               (>! ws-channel message))))) 
