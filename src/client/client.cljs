@@ -46,8 +46,11 @@
 (defonce clock (atom 0))
 
 (defn get-time []
+
   (swap! clock inc)
+
   @clock)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
@@ -92,6 +95,10 @@
 
 (defmulti new-state (fn [_ ev _] (:state ev)))
 
+(defn rep [ev & more]
+  (t/info "Entered state " (:state ev) " from event " (:event ev))
+  (t/info more))
+
 (defmethod new-state :handling-client-msg
   [{:keys [connection config] :as this} ev payload]
   ;; SEND THE MESSAGE
@@ -100,7 +107,7 @@
 
 (defmethod new-state :is-disconnecting
   [this ev payload]
-  (t/info "is disconneting! " (:event ev))
+  (rep ev)
   (fsm/event! this :done {} ))
 
 (defmethod new-state :is-killing-connection
@@ -137,7 +144,7 @@
 
         (let [kill-chan (chan) ]
           (do
-            (reset! @connection {:ws-channel ws-channel :kill-chan kill-chan })
+            (reset! connection {:ws-channel ws-channel :kill-chan kill-chan })
 
             ;; handle the kill chan
 
@@ -154,7 +161,6 @@
                   (fsm/event! this :server-socket-error {})
 
                   (do
-
                     (fsm/event! this :server-message {})
 
                     (recur)))
@@ -164,6 +170,12 @@
                   ;; it's already closed if we got here
                   (swap! connection dissoc :ws-channel)
                   (fsm/event! this :server-socket-closed {}))))))))))
+
+(defmethod new-state :has-connected
+  [{:keys [connection config] :as this} ev payload]
+  (rep ev "need to send message upstream")
+  ;; TODO send msg upstream!
+  )
 
 
 (defmethod new-state :has-disconnected
@@ -206,6 +218,7 @@
 
   (connect! [this]
     (do
+      (println connection)
       (fsm/event! this :connect {}) 
       nil))
 
@@ -216,10 +229,13 @@
     (if connection
       this
 
+      ;; this is overly tricksy
+
       (let [conn-atom (atom nil)
             fsm-atom (atom nil)
-            this (assoc this :connection conn-atom
-                            :fsm  fsm-atom)]
+            this (assoc this 
+                        :connection conn-atom
+                        :fsm  fsm-atom)]
         (do
           (reset! fsm-atom (fsm/mk-state-machine
                              conn-state-table
@@ -256,7 +272,6 @@
                      :kill-chan ::chan
                      :com-chan ::chan)
         :ret nil?)
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
