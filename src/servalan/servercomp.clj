@@ -7,7 +7,6 @@
     [servalan.protocols.connection :as IConn]
     [servalan.connection :as c]
 
-    [servalan.fsm :as fsm]
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
     [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
