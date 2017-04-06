@@ -2,12 +2,18 @@
 
   (:require
 
+[taoensso.timbre :as t
+      :refer-macros [log  trace  debug  info  warn  error  fatal  report
+                     logf tracef debugf infof warnf errorf fatalf reportf
+                     spy get-env]]
+
     [com.stuartsierra.component :as c]
 
     [servalan.messages :refer [mk-msg]]
 
-    [client.protocols :as p] 
+    [servalan.utils :as su]
 
+    [client.protocols :as p] 
     [client.utils :refer [ch->coll cos cos01] :as u]
 
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
@@ -16,7 +22,6 @@
   (:require-macros 
     [servalan.macros :as m :refer [dochan]]
     [cljs.core.async.macros :refer [go go-loop]]))
-
 
 (def player (atom {:pos [10 10]}))
 
@@ -101,32 +106,43 @@
   (on-update [_ t])
   (on-message [_ msg] ))
 
-(defrecord Game [started events system]
+(defrecord Game [started events system com-chan]
 
   IGame
 
   (on-network [this msg]
-    )
+    (t/info " recived network msg " msg))
 
-  (on-update [_ t]
+  (on-update [_ t ]
     (print! system t))
 
-  (on-message [_ msg]
-    (println msg))
+  (on-message [_ msg] 
+    (t/info "received html event" msg))
 
   c/Lifecycle
 
   (start [this]
     (let [this (c/stop this)
-          anim-ch (p/anim-ch events) ]
- 
+          anim-ch (p/anim-ch events)
+          ev-ch (p/events-ch events) ]
+
+      (t/info "Starting game component")
+      (t/info "listening for input from com-chan")
+
+      (go-loop
+        [] (if-let [msg (<! com-chan) ]
+          (do
+            (on-network this msg)
+            (recur))
+          (t/info "com-chan closed")))
+
       (go-loop
         []
-        (if-let [msg (<! ( p/events-ch events ))]
+        (if-let [msg (<! ev-ch)]
           (do
             (on-message this msg)
-            (recur)  )
-          (println "quitted events listening")))
+            (recur))
+          (t/info "ev-ch closed")  ))
 
       (go-loop
         [t 0]
@@ -135,7 +151,7 @@
             (on-update this t)
             (recur (+ t (/ 1 60))))
 
-          (println "quitted anim listening")))
+          (t/info "anim-ch closed")))
 
       (assoc this :started true)))
 

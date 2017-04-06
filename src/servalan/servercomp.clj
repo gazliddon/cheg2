@@ -2,13 +2,14 @@
   (:require 
     [taoensso.timbre :as t ]
 
+    [servalan.fsm :as fsm]
+
     [servalan.messages :refer [mk-msg]]
     [servalan.protocols.connections :as IConns]
     [servalan.protocols.connection :as IConn]
     [servalan.connection :as c]
 
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
-    [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
 
     [org.httpkit.server :refer [run-server]]
@@ -63,14 +64,12 @@
 
 (def players (atom {}))
 
-(defn keyword-uuid []
-  (keyword (str (uuid/v4)) ))
 
 (defn mk-player [{:keys [ws-channel] :as req}]
   {:type :player
    :last-ping -1
    :remote (:remote-addr req)
-   :id (keyword-uuid)
+   :id (c/keyword-uuid)
    :ws-channel ws-channel })
 
 (defn mk-player-msg [typ payload event-time]
@@ -136,13 +135,13 @@
 
   (clean-up! [this]
     (do
-
-
       (let [new-conns (into {} (filter (fn [[k v]]
                                          (is-alive? v)) @connections-atom))]
 
         (t/info "cleaning up connections " (count @connections-atom))
+
         (reset! connections-atom (into {} new-conns))
+
         (t/info "cleaned up connections " (count @connections-atom)) 
         ))
 
@@ -157,11 +156,12 @@
             has-con (->>
                       (:id conn)
                       (has-connection? @connections-atom))]
+
         (when-not has-con
 
           (swap! connections-atom assoc (:id conn) conn)
 
-          (IConns/send! this id (mk-msg :random {} 0)))
+          (IConn/command! conn (mk-msg :hello-from-server {:id id } 0) ))
 
         nil)))
 
@@ -201,7 +201,6 @@
       (let [handler (fn [req]
                       (let [conn (c/mk-connection-process req)]
                         (IConns/add! connections conn)
-                        
                         )) ]
 
         (t/info "starting server component")

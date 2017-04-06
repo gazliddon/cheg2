@@ -1,6 +1,9 @@
 (ns client.client
   (:require 
+
     [cljs.spec :as s]
+
+    [servalan.utils :as su]
 
     [taoensso.timbre :as t
       :refer-macros [log  trace  debug  info  warn  error  fatal  report
@@ -53,32 +56,34 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; local = from me, the client
+;; remote = from the remote host
+
 
 (def conn-state-table
 
-  {:client-message {:has-connected :handling-client-msg }
+  {:listen {:none :is-listening }
 
-   :server-message {:has-connected :handling-server-msg }
+   :connect  {:none :is-connecting
+              :has-disconnected :is-connecting }
+   
+   :local-message {:has-connected :handling-local-msg }
 
-   :done    {:handling-client-msg :has-connected
-             :handling-server-msg :has-connected
+   :remote-message {:has-connected :handling-remote-msg }
+
+   :done    {:handling-local-msg :has-connected
+             :handling-remote-msg :has-connected
              :is-connecting :has-connected
 
              :is-disconnecting :has-disconnected
 
              :is-killing-connection :has-disconnected
              :is-handling-socket-error :has-disconnected
-             :is-handling-server-socket-closed :has-disconnected
+             :is-handling-remote-socket-closed :has-disconnected
 
              :is-handling-connection-error :has-disconnected
 
              :has-disconnected :none }
-
-   :time-out {:is-connecting :is-disconnecting
-              :has-connected :is-disconnecting }
-
-   :connect  {:none :is-connecting
-              :has-disconnected :is-connecting }
 
    :disconnect {:is-connecting :is-disconnecting
                 :has-connected :is-disconnecting }
@@ -86,28 +91,33 @@
    :kill-connection {:has-connected :is-killing-connection
                      :is-disconnecting :has-disconnected }
 
-   :server-socket-error {:has-connected :is-handling-socket-error}
+   :remote-socket-error {:has-connected :is-handling-socket-error}
 
-   :server-socket-closed {:has-connected :is-handling-server-socket-closed}
+   :remote-socket-closed {:has-connected :is-handling-remote-socket-closed}
 
    :connection-error {:is-connecting :is-handling-connection-error} })
-
 
 (defmulti new-state (fn [_ ev _] (:state ev)))
 
 (defn rep [ev & more]
   (t/info "Entered state " (:state ev) " from event " (:event ev))
-  (t/info more))
+  (when more
+    (t/info more)))
 
-(defmethod new-state :handling-client-msg
-  [{:keys [connection config] :as this} ev payload]
-  ;; SEND THE MESSAGE
-  ;; (put! com-chan payload)
-  (fsm/event! this :done {} ) )
+(defmethod new-state :handling-local-msg
+  [{:keys [com-chan] :as this} ev payload]
+  (do
+    (put! com-chan payload) 
+    (fsm/event! this :done {} )))
+
+(defmethod new-state :handling-remote-msg
+  [{:keys [com-chan] :as this} ev payload]
+  (do
+    (put! com-chan payload) 
+    (fsm/event! this :done {} )))
 
 (defmethod new-state :is-disconnecting
   [this ev payload]
-  (rep ev)
   (fsm/event! this :done {} ))
 
 (defmethod new-state :is-killing-connection
@@ -125,13 +135,15 @@
   (swap! connection close-all-chans!)
   (fsm/event! this :done this))
 
-(defmethod new-state :is-handling-server-socket-closed
+(defmethod new-state :is-handling-remote-socket-closed
   [{:keys [connection config] :as this} ev payload]
   (swap! connection close-all-chans!)
   (fsm/event! this :done this))
 
 (defmethod new-state :is-connecting
+
   [{:keys [connection config] :as this} ev payload]
+
   (go
     (let [ch (wsockets/ws-ch (:url config)) 
           {:keys [ws-channel error] :as k} (<! ch)]
@@ -146,41 +158,41 @@
           (do
             (reset! connection {:ws-channel ws-channel :kill-chan kill-chan })
 
+            (fsm/event! this :done {})
+
             ;; handle the kill chan
 
             (dochan [msg kill-chan]
                   (fsm/event! this :kill-connection {}))
 
-            (fsm/event! this :done {})
-
             ;; handle incoming events
 
             (loop []
-              (if-let [{:keys [error message]} (<! ws-channel)]
+              (if-let [{:keys [error message] :as raw-message} (<! ws-channel)]
                 (if error
-                  (fsm/event! this :server-socket-error {})
+                  (do
+                    (t/error "error")
+                    (t/info raw-message )
+                    (fsm/event! this :remote-socket-error {}))
 
                   (do
-                    (fsm/event! this :server-message {})
-
+                    (fsm/event! this :remote-message message)
                     (recur)))
 
                 (do 
                   ;; remove without closing the ws-channel
                   ;; it's already closed if we got here
                   (swap! connection dissoc :ws-channel)
-                  (fsm/event! this :server-socket-closed {}))))))))))
+                  (fsm/event! this :remote-socket-closed {}))))))))))
 
 (defmethod new-state :has-connected
-  [{:keys [connection config] :as this} ev payload]
-  (rep ev "need to send message upstream")
-  ;; TODO send msg upstream!
+  [{:keys [com-chan] :as this} ev payload]
   )
 
-
 (defmethod new-state :has-disconnected
-  [{:keys [connection config] :as this} ev payload]
-  (fsm/event! this :done {}))
+  [{:keys [com-chan] :as this} ev payload]
+  (do
+    (fsm/event! this :done {})))
 
 (defmethod new-state :is-handling-connection-error
   [{:keys [connection config] :as this} ev payload]
@@ -195,7 +207,9 @@
   (t/info "ev      -> " ev)
   (t/info "payload -> " payload))
 
+
 (defrecord ClientComponent [com-chan config connection fsm ] 
+
   fsm/IStateMachine
 
   (get-state [this ]
@@ -218,7 +232,6 @@
 
   (connect! [this]
     (do
-      (println connection)
       (fsm/event! this :connect {}) 
       nil))
 
@@ -240,6 +253,7 @@
           (reset! fsm-atom (fsm/mk-state-machine
                              conn-state-table
                              (fn [ev payload]
+                               (println ev)
                                (new-state this ev payload))))
           this))))
 
@@ -250,8 +264,7 @@
            :connection nil
            :fsm nil)))
 
-(defn mk-client-component [config]
- (map->ClientComponent {:config config }))
+(defn mk-client-component [config] (map->ClientComponent {:config config }))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

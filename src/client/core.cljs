@@ -2,6 +2,10 @@
   (:require
     [client.game :as game]
 
+    [taoensso.timbre :as t
+      :refer-macros [log  trace  debug  info  warn  error  fatal  report
+                     logf tracef debugf infof warnf errorf fatalf reportf
+                     spy get-env]]
 
     [sablono.core :as html :refer-macros [html]]
     [com.stuartsierra.component :as c]
@@ -10,6 +14,7 @@
     [client.client :refer [mk-client-component]]
 
     [servalan.messages :refer [mk-msg]]
+    [servalan.utils :as su]
 
     [servalan.fsm :as fsm]
     [client.protocols :as p] 
@@ -33,20 +38,33 @@
 
   (:require-macros 
     [servalan.macros :as m :refer [dochan]]
-    [cljs.core.async.macros :refer [go go-loop]]
-    
-    ))
+    [cljs.core.async.macros :refer [go go-loop]]))
 
 
 (def config { :conn-config {:url  "ws://localhost:6502"
                             :ping-frequency 1000 }
              :html-id "game" })
 
-(defn mk-game [config]
+(defn mk-com-chan []
+  (let [reader (chan)
+        writer (chan) ]
+
+    (go-loop
+      [ ]
+      (if-let [m (<! writer)]
+        (do
+          (>! reader m)
+          (recur))))
+    
+    (su/bidi-ch
+      reader
+      writer)))
+
+(defn mk-game [config com-chan]
 
   (c/system-map
 
-    :com-chan (chan)
+    :com-chan com-chan
 
     :config config
 
@@ -59,7 +77,8 @@
                         [:com-chan])
 
     :game (c/using (game/mk-game)
-                          [:client-connection
+                          [:com-chan
+                           :client-connection
                            :events
                            :system
                            :config])
@@ -71,21 +90,20 @@
 (defn stop []
  (when @sys-atom
   (c/stop-system @sys-atom)
+  (close! (:com-chan @sys-atom ))
   (reset! sys-atom nil)) )
-
 
 (defn start []
   (do
-
     (stop)
 
     (->>
+      (mk-com-chan)
       (mk-game config)
       (c/start-system) 
-      (reset! sys-atom ))
-    (-> @sys-atom :client-connection client/connect!)
-    )
-  )
+      (reset! sys-atom ))  
+    
+    (-> @sys-atom :client-connection client/connect!)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -108,19 +126,9 @@
 )
 
 
-;; =============================================================================
-;; Objs
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; player
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def app-state (atom {:conn-status :disconnected
-                      :game-running false
-                      }))
+                      :game-running false }))
 
 
 (defmulti reader-fn om/dispatch)
@@ -153,7 +161,6 @@
   {:action (fn [] (swap! state assoc :game-running false)) })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; <button type="submit" class="pure-button pure-button-primary">Sign in</button>
 
 (defn input-template [ ]
   (html
@@ -218,16 +225,12 @@
           (let [{:keys [game-running] :as props} (om/props this) ]
             (html
               [:div
-               [:div [:h1 "Cheg"]]
+               [:h1 "Cheg"]
 
                (if game-running
-
-                 [:div
-                  [:div (mk-button this "Quit" `[(game/stop)] stop)] 
-                  [:div (mk-button this "Connect" `[] #())] ]
-
-                 [:div
-                  (mk-button this "Start" `[(game/start)] start) ]) ] ))))
+                 (mk-button this "Quit" `[(game/stop)] stop) 
+                 (mk-button this "Start" `[(game/start)] start)) ]
+              ))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
