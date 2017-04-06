@@ -128,13 +128,18 @@
                     :com-chan (chan)
                     :kill-chan (chan)}))
 
+;; TODO
+;; This is shit
+;; needs to be less shit
+;; client.cljs is much better
+
 (defn mk-connection-process
   ;; Turn a ws request into a connection process
   ;; and return a connection record
 
   [req]
 
-  (let [id (-> (uuid/v4) str keyword)
+  (let [id (keyword-uuid)
 
         {:keys [ws-channel com-chan kill-chan] :as conn} (mk-connection req )
 
