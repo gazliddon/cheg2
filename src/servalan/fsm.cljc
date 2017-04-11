@@ -1,4 +1,7 @@
 (ns servalan.fsm
+  (:require
+    [clojure.pprint :as pp :refer [pprint]] 
+    )
   )
 
 ;; Hey it's a state machine!
@@ -40,3 +43,15 @@
 
   ([table]
    (mk-state-machine table (fn [a b] nil))))
+
+(defn get-states
+  "get a sequence of unique states in this state table"
+  [st]
+  (->>
+    st
+    (vals)
+    (mapcat #(into [] %))
+    (flatten)
+    (distinct)))
+
+ 

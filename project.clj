@@ -6,9 +6,11 @@
 
   :min-lein-version "2.7.1"
 
+  :global-vars {*warn-on-reflection* true}
+
   :dependencies [[org.clojure/clojure "1.8.0"]
 
-
+                 [org.clojure/test.check "0.9.0"]
 
                  [org.clojure/clojurescript "1.9.229"]
 
@@ -30,6 +32,7 @@
                  [com.stuartsierra/component "0.3.2"]
 
                  [ring-middleware-format "0.7.2"]
+
 
                  [ring "1.5.1"]
 
@@ -110,10 +113,12 @@
              ;; :server-logfile "tmp/logs/figwheel-logfile.log"
              }
 
-
 :profiles {:dev {:dependencies [[binaryage/devtools "0.9.0"]
                                 [figwheel-sidecar "0.5.9"]
-                                [com.cemerick/piggieback "0.2.1"] ]
+                                [com.cemerick/piggieback "0.2.1"]
+                                [jonase/eastwood "0.2.3" :exclusions [org.clojure/clojure]]
+                                ]
+
                  ;; need to add dev source path here to get user.clj loaded
 
                  :source-paths ["src" "dev"]

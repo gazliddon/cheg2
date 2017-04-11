@@ -41,11 +41,14 @@
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
+(declare start stop)
+
+
 (def config { :conn-config {:url  "ws://localhost:6502"
                             :ping-frequency 1000 }
              :html-id "game" })
 
-(defn mk-com-chan []
+(defn mk-bidi-chan []
   (let [reader (chan)
         writer (chan) ]
 
@@ -60,11 +63,13 @@
       reader
       writer)))
 
-(defn mk-game [config com-chan]
+(defn mk-game [config ui-chan ]
 
   (c/system-map
 
-    :com-chan com-chan
+    :ui-chan ui-chan
+
+    :com-chan (mk-bidi-chan)
 
     :config config
 
@@ -74,10 +79,12 @@
 
     :client-connection (c/using
                         ( mk-client-component (:conn-config config) )
-                        [:com-chan])
+                        [:com-chan
+                         :ui-chan ])
 
     :game (c/using (game/mk-game)
                           [:com-chan
+                           :ui-chan
                            :client-connection
                            :events
                            :system
@@ -85,25 +92,12 @@
     )
   )
 
+
 (defonce sys-atom (atom nil))
 
-(defn stop []
- (when @sys-atom
-  (c/stop-system @sys-atom)
-  (close! (:com-chan @sys-atom ))
-  (reset! sys-atom nil)) )
 
-(defn start []
-  (do
-    (stop)
 
-    (->>
-      (mk-com-chan)
-      (mk-game config)
-      (c/start-system) 
-      (reset! sys-atom ))  
-    
-    (-> @sys-atom :client-connection client/connect!)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -120,35 +114,35 @@
 (enable-console-print!)
 
 (defn on-js-reload []
-  ;; optionally touch your app-state to force rerendering depending on
+  ;; optionally touch your app-state to force re-rendering depending on
   ;; your application
    ;; (swap! app-state update-in [:__figwheel_counter] inc)
 )
 
 
-
 (def app-state (atom {:conn-status :disconnected
+
+                      :game-status {:running false
+                                    :state nil
+                                    }
+
                       :game-running false }))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 (defmulti reader-fn om/dispatch)
+
+; (defmethod reader-fn :game-satus
+;  [{:keys [state query] :as this } k k2]
+;  {:value (:game @state)})
+
 
 (defmethod reader-fn :default
  [{:keys [state]} k _]
   (let [st @state] ;; CACHING!!!
     (if (contains? st k)
       {:value (get st k)})))
-
-
-; (defmethod reader-fn :conn-status
-;   [{:keys [state] :as env} key params]
-;   {:value (str(:conn-status @state))})
-
-
-; (defmethod reader-fn :game-running
-;   [{:keys [state] :as env} key params]
-;   {:value (:game-running @state)})
-
 
 (defmulti mutate-fn om/dispatch)
 
@@ -161,35 +155,6 @@
   {:action (fn [] (swap! state assoc :game-running false)) })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn input-template [ ]
-  (html
-    [:form {:class "pure-form-stacked"} 
-     [:fieldset
-
-      [:legend "Login"]
-
-      [:input {:type "text" :placeholder "username":ref "name"}]
-
-      [:input {:type "password" :placeholder "password":ref "password"}]
-
-      [:button {:type "submit" :class "pure-button pure-button-primary"} "Sign In"] ] ]))
-
-(defui LoginBox
-  static om/IQuery
-
-  Object
-  (query [this]
-         [:transaction :show-password])
-
-  (render [this]
-          (let [{:keys [transaction] :as props} (om/props this)]
-            )
-          )
-  )
-
-
-(defn login-box [] (om/factory LoginBox))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -210,42 +175,78 @@
   ;  txt]
   )
 
-(defn game-running-buttons [this]
-  )
+
+
+(def ui-chan (mk-bidi-chan))
 
 (defui App
 
   static om/IQuery
+  (query [this] '[:game-status])
 
-  (query [this]
-         '[:game-running])
   Object
 
   (render [this]
-          (let [{:keys [game-running] :as props} (om/props this) ]
+          (let [{:keys [game-status] :as props} (om/props this)
+                running (:running game-status) ]
             (html
               [:div
                [:h1 "Cheg"]
 
-               (if game-running
-                 (mk-button this "Quit" `[(game/stop)] stop) 
+               (if running
+                 (do
+                   (mk-button this "Quit" `[(game/stop)] stop) )
+
                  (mk-button this "Start" `[(game/start)] start)) ]
               ))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (def reconciler
 
   (om/reconciler
     {:state app-state
      :parser (om/parser {:read reader-fn :mutate mutate-fn})}))
 
-(defn main []
-  (let [app-el (gdom/getElement "app")
-        game-el (gdom/getElement "game") ]
 
-    (om/add-root! reconciler
-                  App app-el)))
+(defn main []
+  (let [app-el (gdom/getElement "app") ]
+    (do
+      (om/add-root! reconciler
+                    App app-el)
+
+      ;; listen for any msg to the UI
+      (go-loop
+        []
+        (if-let [msg (<! ui-chan)]
+          (t/info "got a message for the UI " msg)
+
+          ;; do a condition for UI messages
+          ;; make ui chan bidirectional-s
+          
+          )))
+
+    ))
+
+(defn stop []
+ (when @sys-atom
+
+  (c/stop-system @sys-atom)
+
+  (doseq [c [:com-chan :ui-chan]]
+    (close! (get @sys-atom c)))
+
+  (reset! sys-atom nil)) )
+
+(defn start []
+  (do
+    (stop)
+    (->>
+      (mk-game config ui-chan)
+      (c/start-system ) 
+      (reset! sys-atom ))  
+    
+    (-> @sys-atom :client-connection client/connect!)))
+
 
 (stop)
 (main)

@@ -14,20 +14,31 @@
     [clojure.pprint :as pp])
   (:gen-class))
 
+
 (defn to-secs [t]
   (double (/ t 1000000000)))
 
-(defn timer [millis]
-  (let [c (a/chan (a/dropping-buffer 1))]
-    (a/go
-      (loop [start (System/nanoTime)
-             t start ]
-        (<! (a/timeout millis))
-        (let [nt (System/nanoTime)
-              dt (- nt t) ]
-          (put! c {:time (to-secs (- nt start) ) :dtime (to-secs dt )})
-          (recur start (System/nanoTime)))))
-    c))
+(defn mk-timer-chan
+
+  ([millis dest-ch]
+
+   (a/go
+     (loop [start (System/nanoTime) t start ]
+
+       (let [_  (<! (a/timeout millis))
+             nt (System/nanoTime)
+             dt (- nt t) ]
+
+         (when (put! dest-ch {:start (to-secs start)
+                              :time (to-secs (- nt start) )
+                              :dtime (to-secs dt )})
+
+           (recur start (System/nanoTime))))))
+   dest-ch)
+
+  ([millis]
+   (mk-timer-chan millis (a/chan (a/dropping-buffer 1)))))
+
 
 (defn init-logging []
   (t/merge-config!
@@ -69,7 +80,6 @@
 
     :app (component/using (map->App {}) 
                           [:server :config])))
-
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

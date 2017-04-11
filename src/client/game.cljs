@@ -1,6 +1,7 @@
 (ns client.game
 
   (:require
+    [servalan.fsm :as fsm]
 
     [taoensso.timbre :as t
      :refer-macros [log  trace  debug  info  warn  error  fatal  report
@@ -14,10 +15,10 @@
     [servalan.utils :as su]
 
     [client.protocols :as p] 
-    [client.utils :refer [ch->coll cos cos01] :as u]
 
-    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
-    )
+    [client.utils :refer [ch->coll cos cos01 add-fsm remove-fsm] :as u]
+
+    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
 
   (:require-macros 
     [servalan.macros :as m :refer [dochan]]
@@ -54,6 +55,7 @@
              (clear-buffer! renderer  col)
              (draw-objs @objs @t renderer  )
              (square! renderer (:pos new-player) [10 10] [255 255 255] )
+             (spr! renderer nil (:pos new-player) [100 100]  )
              (reset! player new-player))))
 
 (defn is-active? [{:keys [start-time duration]} t]
@@ -87,50 +89,69 @@
 (def objs (atom []))
 
 (defn print! [renderer t]
-  (let [red (* 255 (cos01 (*  t 10)))
+  (let [red (* 255 (cos01 (*  t 1)))
         col [red 0 255]
         fcol (apply u/to-color col) ]
 
-    (do
-      (doto renderer
-
-        (p/clear-all! col)
-        (draw-objs @objs t)
-        (p/square! (:pos @player) [10 10] [255 255 255] )
-
-        ))))
+    (doto renderer
+      (p/clear-all! col)
+      (draw-objs @objs t)
+      (p/square! (:pos @player) [10 10] [255 255 255] )
+      (p/spr! :poo [10 10] [400 400]))
+    ))
 
 (defprotocol IGame
   (on-network [_ msg])
   (on-update [_ t])
   (on-message [_ msg] ))
 
-(defrecord Game [started events system com-chan]
+(def game-state-table
+  {
+   :hello-from-server {:none :starting-game}
+   :game-state {:running-game :getting-state}
 
-  IGame
+   :send-to-server {:running-game :sending-to-server}
 
-  (on-network [this msg]
-    (t/info " received network msg " msg))
+   :done {:getting-state :running-game
+          :sending-to-server :running-game
+          :starting-game :running-game }
 
-  (on-update [_ t ]
-    (print! system t))
+   :quit {:running-game :none}
+   })
 
-  (on-message [_ msg] 
-    )
+(defmulti game-state (fn [this ev payload] (:state ev)))
 
-  c/Lifecycle
+(defmethod game-state :default [_ ev _]
+  (t/error "unhandled state entry" (:state ev)))
 
-  (start [this]
-    (let [this (c/stop this)
-          anim-ch (p/anim-ch events)
-          ev-ch (p/events-ch events) ]
+(defmethod game-state :starting-game
+  [{:keys [state] :as this} ev payload]
+  (t/info "starting game")
+  (swap! state assoc :id 1)
+  (fsm/event! this :done {}))
 
-      (t/info "Starting game component")
+(defmethod game-state :running-game
+  [{:keys [state] :as this} ev payload]
+  ; (t/info "running game")
+  
+  )
+
+(defmethod game-state :sending-to-server
+  [{:keys [state] :as this} ev payload]  
+
+  (fsm/event! this :done {}) )
+
+(defn add-listeners [{:keys [events com-chan] :as this}]
+  (let [anim-ch (p/anim-ch events)
+        ev-ch (p/events-ch events) ]
+    (do
+
       (t/info "listening for input from com-chan")
 
       (go-loop
         [] (if-let [msg (<! com-chan) ]
              (do
+               (t/info "game handling com-chan msg " msg)
                (on-network this msg)
                (recur))
              (t/info "com-chan closed")))
@@ -149,17 +170,90 @@
           (do
             (on-update this t)
             (recur (+ t (/ 1 60))))
+          (t/info "anim-ch closed")))))
+  this)
 
-          (t/info "anim-ch closed")))
 
-      (assoc this :started true)))
+(defmulti refresh (fn [this _]))
+
+(defmethod refresh :default [this state]
+  )
+
+(defmethod refresh :none [this state]
+  )
+
+(defrecord Game [started events system com-chan state fsm ui-chan]
+
+  fsm/IStateMachine
+
+  (get-state [this ] (fsm/get-state @fsm))
+
+  (event! [this ev payload]
+    (let [new-state (fsm/event! @fsm ev payload)]
+
+      ;; if there's state change then
+      ;; tell the ui
+      (when new-state
+        (put! ui-chan {:state new-state}))
+
+      new-state))
+
+  IGame
+
+  (on-network [this msg]
+    (t/info "on-network" msg)
+    (t/info "player is " @state)
+    (fsm/event! this (:type msg) (:payload msg)))
+
+  (on-update [this t ]
+    (do
+      ;; send player pos to server
+      (let [player-msg 
+            (->
+              (mk-msg :player @player 0)
+              (assoc :id (:id @state)))]
+
+        (fsm/event! this :send-to-server player-msg))
+
+      ;; Draw the things
+
+      ; (t/info (fsm/get-state this))
+
+      (case (fsm/get-state this)
+        :running-game (print! system t)
+        :default)
+
+      ))
+
+  (on-message [_ msg] )
+
+  c/Lifecycle
+
+  (start [this]
+
+    (t/info "Starting game component")
+
+    (let [ret (-> (c/stop this)
+                  (assoc :state (atom {:id -1})
+                         :started true )
+                  (add-fsm :fsm game-state-table game-state )
+                  (add-listeners))]
+      ret)
+    )
 
   (stop [this]
     (when started
-      ;; shutdown
+      (remove-fsm this :fsm)
+      
       )
-    (assoc this :started nil)))
-
+    (assoc this
+           :started nil
+           :state nil )))
 
 (defn mk-game[]
   (map->Game {}))
+
+
+
+
+

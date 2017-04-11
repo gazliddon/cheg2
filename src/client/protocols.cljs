@@ -10,6 +10,7 @@
   (resize! [_ dims])
   (reset-transform! [this])
   (clear-all! [this col])
+  (spr! [this img xy wh])
   (square! [this xy wh col]))
 
 (defprotocol IEvents

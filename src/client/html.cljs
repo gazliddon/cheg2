@@ -1,5 +1,6 @@
 (ns client.html
   (:require
+    [client.sprdata :as sprdata]
     [servalan.utils :as su]
     [client.utils :as u]
     [com.stuartsierra.component :as c]
@@ -19,7 +20,11 @@
 
   )
 
+
 (enable-console-print!)
+
+(def test-sprs sprdata/test-data)
+(def rimg (:img test-sprs))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Canvas stuff
@@ -36,19 +41,28 @@
   (gdom/removeNode (find-canvas))
   )
 
+(defn ctx-smoothing!
+  "set every property we can control how
+  scaled images are smoothed"
+  [ctx v]
+  (set! (.-imageSmoothingEnabled  ctx) v) 
+  (set! (.-mozImageSmoothingEnabled  ctx) v) 
+  (set! (.-oImageSmoothingEnabled  ctx) v) 
+  (set! (.-webkitImageSmoothingEnabled  ctx) v) 
+  (set! (.-msImageSmoothingEnabled  ctx) v))
+
 (defn add-game-html! [game-el]
 
-  (let [wh [(.-offsetWidth game-el )
-            500 ]
-
-        canvas-html (make-canvas-html wh) ]
+  (let [wh [(.-offsetWidth game-el ) 500 ]
+        canvas-html (make-canvas-html wh)
+        ctx (.getContext canvas-html "2d") ]
 
     (do
       (gdom/removeNode (find-canvas))
-
       (gdom/appendChild game-el canvas-html )
+      (ctx-smoothing! ctx false)
 
-      {:ctx (.getContext canvas-html "2d")
+      {:ctx ctx 
        :html canvas-html
        :wh wh })))
 
@@ -243,6 +257,14 @@
   (reset-transform! [this]
     (.resetTransform ctx 1 0 0 1 0 0)
     nil)
+
+  (spr! [this _ [x y] [w h]]
+    (do
+      (.save ctx)
+      (.drawImage ctx rimg 0 0 100 100 x y w h)
+      (.restore ctx)
+      nil )
+    )
 
   (square! [this [x y] [w h] color]
     (do

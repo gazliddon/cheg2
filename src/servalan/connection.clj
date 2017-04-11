@@ -61,14 +61,18 @@
 (defmethod state-change :handling-remote-msg [this ev payload]
   (let [{:keys [type reply-chan ] } payload]
     (do
-      (t/info "STATE: handling-remote-msg ")
+      (t/info "payload" payload)
       (fsm/event! this :done payload) ))
   )
 
 (defmethod state-change :handling-local-msg [{:keys[ws-channel] :as this } ev payload]
   (do
     (t/info "handling local msg " payload)
-    (put! ws-channel payload)
+    (when-not (put! ws-channel payload)
+      (t/error "trouble sending to client")
+
+    
+    )
     (fsm/event! this :done payload)))
 
 (defmethod state-change :default [this ev payload]

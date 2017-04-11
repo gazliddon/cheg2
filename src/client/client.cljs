@@ -1,9 +1,11 @@
 (ns client.client
   (:require 
 
-    [cljs.spec :as s]
+    [clojure.spec :as s ]
+    [clojure.spec.test :as st ]
 
     [servalan.utils :as su]
+    [client.utils :as cu]
 
     [taoensso.timbre :as t
       :refer-macros [log  trace  debug  info  warn  error  fatal  report
@@ -12,7 +14,7 @@
     
 
     [servalan.messages :refer [mk-msg]]
-    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
+    [clojure.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
     [client.html :as html]
     [servalan.fsm :as fsm]
     [servalan.protocols.clientconnection :as client]
@@ -20,6 +22,7 @@
     [chord.client :as wsockets  ])
 
   (:require-macros 
+    [cljs.spec.test :as st ]
     [client.macros :as m :refer [dochan chandler]]
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -63,7 +66,6 @@
 ;; local = from me, the client
 ;; remote = from the remote host
 
-
 (def conn-state-table
 
   {:listen {:none :is-listening }
@@ -101,6 +103,8 @@
 
    :connection-error {:is-connecting :is-handling-connection-error} })
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defmulti new-state (fn [_ ev _] (:state ev)))
 
 (defn rep [ev & more]
@@ -109,9 +113,9 @@
     (t/info more)))
 
 (defmethod new-state :handling-local-msg
-  [{:keys [com-chan] :as this} ev payload]
+  [{:keys [ws-channel] :as this} ev payload]
   (do
-    (put! com-chan payload) 
+    (put! ws-channel payload)
     (fsm/event! this :done {} )))
 
 (defmethod new-state :handling-remote-msg
@@ -141,11 +145,11 @@
   (fsm/event! this :done this))
 
 (defmethod new-state :is-connecting
-
-  [{:keys [connection config] :as this} ev payload]
+  [this ev {:keys [url com-chan] :as payload}]
 
   (go
-    (let [ch (wsockets/ws-ch (:url config)) 
+    (let [connection (:connection this)
+          ch (wsockets/ws-ch url) 
           {:keys [ws-channel error] :as k} (<! ch)]
 
       (if error
@@ -156,46 +160,55 @@
 
         (let [kill-chan (chan) ]
           (do
-            (reset! connection {:ws-channel ws-channel :kill-chan kill-chan })
+            (-> (:connection this)
+                (reset! {:ws-channel ws-channel
+                         :kill-chan kill-chan }))
 
             (fsm/event! this :done {})
 
-            ;; handle the kill chan
-
+            ;; Kill channel - send anything to this an all will close
             (dochan
               [msg kill-chan]
               (swap! connection close-all-chans!)
-              (fsm/event! this :kill-connection {}))
+              (fsm/event! this :kill-connection {:kill-msg msg}))
 
-            ;; handle incoming events
+            ;; handle the any local messages we receive
 
+            (go-loop
+              []
+              (if-let [msg (<! com-chan)]
+
+                (do ;; yes
+                    (fsm/event! this :local-message msg) 
+                    (recur))
+
+                (do ;; no
+                    (>! kill-chan :com-chan-closed))))
+
+            ;; handle remote message channel
+            ;; we're in a go block already
             (loop []
               (if-let [{:keys [error message] :as raw-message} (<! ws-channel)]
                 (if error
-                  (do
-                    (t/error "error")
-                    (t/info raw-message )
-                    (swap! connection close-all-chans!)
-                    (fsm/event! this :remote-socket-error {}))
+                  (do ;; an error!
+                      (fsm/event! this :remote-socket-error {})
+                      (>! kill-chan :remote-socket-error))
 
-                  (do
-                    (fsm/event! this :remote-message message)
-                    (recur)))
+                  (do ;; all fine
+                      (fsm/event! this :remote-message message)
+                      (recur)))
 
-                (do 
-                  ;; remove without closing the ws-channel
-                  ;; it's already closed if we got here
-                  (swap! connection close-all-chans!)
-                  (fsm/event! this :remote-socket-closed {}))))))))))
+                (do  ;; nil from ws-channel
+                    (fsm/event! this :remote-socket-closed {})         
+                    (>! kill-chan :remote-socket-closed))))))))))
+
 
 (defmethod new-state :has-connected
-  [{:keys [com-chan] :as this} ev payload]
-  )
+  [{:keys [com-chan] :as this} ev payload])
 
 (defmethod new-state :has-disconnected
-  [{:keys [com-chan] :as this} ev payload]
-  (do
-    (fsm/event! this :done {})))
+  [{:keys [] :as this} ev payload]
+  (fsm/event! this :done {}))
 
 (defmethod new-state :is-handling-connection-error
   [{:keys [connection config] :as this} ev payload]
@@ -206,67 +219,47 @@
   (t/info "no state : disconnected"))
 
 (defmethod new-state :default [{:keys [connection config] :as this} ev payload]
-  (t/info "missing state entry function " (:state ev))
-  (t/info "ev      -> " ev)
-  (t/info "payload -> " payload))
+  (t/error "missing state entry function " (:state ev))
+  (t/error "ev      -> " ev)
+  (t/error "payload -> " payload))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord ClientComponent [com-chan config connection fsm ] 
+(defrecord ClientComponent [ui-chan com-chan config connection fsm ] 
 
   fsm/IStateMachine
 
-  (get-state [this ]
-    (fsm/get-state @fsm))
-
-  (event! [this ev payload]
-    (do
-      (fsm/event! @fsm ev payload)
-      nil))
+  (get-state [this ] (fsm/get-state @fsm))
+  (event! [this ev payload] (fsm/event! @fsm ev payload))
 
   client/IClientConnection
 
-  (state? [this ]
-    (fsm/get-state @fsm))
+  (state? [this ] (fsm/get-state @fsm))
 
-  (disconnect! [this]
-    (do
-      (fsm/event! this :disconnect {})
-      nil))
+  (disconnect! [this] (fsm/event! this :disconnect {}))
 
   (connect! [this]
-    (do
-      (fsm/event! this :connect {}) 
-      nil))
+    (fsm/event!
+      this
+      :connect {:url (:url config )
+                :com-chan com-chan })  )
 
   c/Lifecycle
 
   (start [this]
     (if connection
       this
-
-      (let [conn-atom (atom nil)
-
-            fsm-atom (atom nil)
-
-            this (assoc this 
-                        :connection conn-atom
-                        :fsm  fsm-atom)
-
-            dispatcher (fn [ev payload]
-                         (println ev)
-                         (new-state this ev payload)) ]
-        (do
-          (reset! fsm-atom (fsm/mk-state-machine
-                             conn-state-table
-                             dispatcher))
-          this))))
+      (->
+        this
+        (assoc :connection (atom nil))    
+        (cu/add-fsm :fsm conn-state-table new-state))))
 
   (stop [this]
     (when connection
+      (t/info "stoping connection")
+      (cu/remove-fsm this :fsm)
       (client/disconnect! this))
-    (assoc this
-           :connection nil
-           :fsm nil)))
+    (assoc this :connection nil)))
 
 (defn mk-client-component [config] (map->ClientComponent {:config config }))
 
@@ -289,6 +282,23 @@
                      :kill-chan ::chan
                      :com-chan ::chan)
         :ret nil?)
+
+(defn valid-client? [{:keys [connection config] :as this}]
+  (and
+    (atom? connection)
+    (satisfies? this client/IClientConnection)
+    )
+  false
+  )
+
+(s/def ::valid-client valid-client? )
+
+(s/fdef new-state
+  :args (s/cat :this ::chan)
+  :ret ::chan)
+
+(st/instrument `new-state)
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

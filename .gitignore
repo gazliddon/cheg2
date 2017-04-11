@@ -14,3 +14,4 @@ pom.xml
 .repl*
 .cljs_rhino_repl*
 servalan.log
+.DS_Store

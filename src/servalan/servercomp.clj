@@ -17,7 +17,6 @@
     [clojure.pprint :as pp])
   )
 
-
 (def all-players (atom []))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -48,19 +47,6 @@
         (conj os o)
         os))
     (reduce '() objs)))
-(def objs
-  [{:type :frutz
-    :start-time 1.5
-    :duration 5
-    :pos [10 10]
-    :col [255 0 0] } 
-
-   {:type :frutz
-    :start-time 0
-    :duration 5
-    :pos [100 30]
-    :col [255 0 255]}])
-
 
 (def players (atom {}))
 
@@ -78,12 +64,7 @@
 (defn msg-player! [player typ payload event-time]
   (a/put! (:to-player player) (mk-player-msg typ payload event-time)))
 
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;;;;;;;;
-
 (defn- call-connection! [connections id method & payload]
   (let [conn (get id connections)]
     (when conn
@@ -93,12 +74,9 @@
 (defn- call-connections!
   [connections method & payload]
   (doseq [[k conn] connections ]
-    (apply method conn payload))
-  nil)
-
+    (apply method conn payload)) )
 
 ;; TODO filter for long pings
-
 (defn is-alive? [c]
   (IConn/is-connected? c))
 
@@ -107,7 +85,6 @@
  
 (defn- has-connection? [connections id]
   (get connections id nil))
-
 
 ;;;;;;;;;;
 
