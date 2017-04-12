@@ -16,14 +16,9 @@
 
                  [sablono "0.2.3"]
 
-                 ; [prismatic/dommy "1.1.0"]
-
-                 [hipo "0.5.2"]
-
                  [danlentz/clj-uuid "0.1.6"]
 
                  [jarohen/chord "0.8.1"]
-                 ; [compojure "1.5.2"]
 
                  [com.taoensso/timbre "4.8.0"]
 

@@ -1,5 +1,6 @@
 (ns client.html
   (:require
+    [sablono.core :as html :refer-macros [html]]
     [shared.utils :as su]
     [client.utils :as u]
     [com.stuartsierra.component :as c]
@@ -8,7 +9,9 @@
     [goog.events :as events]
     [goog.dom :as gdom]
 
-    [hipo.core              :as hipo  :include-macros true]
+    [goog.object :as gobject]
+
+    ; [hipo.core              :as hipo  :include-macros true]
     ; [dommy.core             :as dommy :include-macros true]   
 
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
@@ -22,22 +25,23 @@
 
 (enable-console-print!)
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Canvas stuff
 
 (defn make-canvas-html [[ w h ]]
-  ;; TODO Remove this dependency on hipo
-  (hipo/create
-    [:canvas#canvas {:width w :height h}]))
+  (let [e (gdom/createElement "canvas")]
+    (do
+      (->>
+        #js {:width w :height h :id "canvas"}
+        (gdom/setProperties e ))
+      e)))
 
 (defn find-canvas []
  (gdom/getElement "canvas") )
 
 (defn remove-game-html! [game-el]
   ;; TODO only get the canvas in the game el
-  (gdom/removeNode (find-canvas))
-  )
+  (gdom/removeNode (find-canvas)))
 
 (defn ctx-smoothing!
   "set every property we can control how
