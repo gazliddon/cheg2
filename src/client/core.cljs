@@ -8,6 +8,7 @@
                      spy get-env]]
 
     [sablono.core :as html :refer-macros [html]]
+
     [com.stuartsierra.component :as c]
 
     [servalan.protocols.clientconnection :as client]
@@ -23,18 +24,13 @@
 
     [client.keys :as k]
 
-    [goog.events :as events]
-
     [goog.dom :as gdom]
     [om.next :as om :refer-macros [defui]]
     [om.dom :as dom] 
 
-
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
-
-    [chord.client :refer [ws-ch]]
-    [hipo.core              :as hipo  :include-macros true]
-    [dommy.core             :as dommy :include-macros true]  )
+    
+    )
 
   (:require-macros 
     [servalan.macros :as m :refer [dochan]]
@@ -217,13 +213,11 @@
       ;; listen for any msg to the UI
       (go-loop
         []
-        (if-let [msg (<! ui-chan)]
-          (t/info "got a message for the UI " msg)
-
+        (when-let [msg (<! ui-chan)]
+          ; (t/info "got a message for the UI " msg)
           ;; do a condition for UI messages
           ;; make ui chan bidirectional-s
-          
-          )))
+          (recur))))
 
     ))
 

@@ -5,7 +5,6 @@
     [taoensso.timbre :as t ]
 
 
-    [client.protocols :as cp]
 
     [servalan.protocols.connection :as connection]
     [servalan.protocols.clientactions :as client]
@@ -79,10 +78,12 @@
     (t/info "unhandled event " )   
     (t/info "ev -> " ev )   
     (t/info "payload - > " payload )   )
+(defprotocol IStatus
+  (get-status [_]))
 
 (defrecord Connection [id req fsm ws-channel com-chan kill-chan]
 
-  cp/IStatus
+  IStatus
 
   (get-status [_]
     { :state (fsm/get-state fsm) })

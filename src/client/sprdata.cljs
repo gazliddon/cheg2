@@ -41,7 +41,7 @@
 
     (grab-single [_ [x y]]
       [ (+ base-x (* x cell-width))
-       (+ base-x (* x cell-width))
+       (+ base-y (* y cell-width))
        cell-width
        cell-height ])
 

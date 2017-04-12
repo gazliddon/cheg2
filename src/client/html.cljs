@@ -1,6 +1,5 @@
 (ns client.html
   (:require
-    [client.sprdata :as sprdata]
     [servalan.utils :as su]
     [client.utils :as u]
     [com.stuartsierra.component :as c]
@@ -10,7 +9,7 @@
     [goog.dom :as gdom]
 
     [hipo.core              :as hipo  :include-macros true]
-    [dommy.core             :as dommy :include-macros true]   
+    ; [dommy.core             :as dommy :include-macros true]   
 
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
 
@@ -23,13 +22,12 @@
 
 (enable-console-print!)
 
-(def test-sprs sprdata/test-data)
-(def rimg (:img test-sprs))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Canvas stuff
 
 (defn make-canvas-html [[ w h ]]
+  ;; TODO Remove this dependency on hipo
   (hipo/create
     [:canvas#canvas {:width w :height h}]))
 
@@ -258,13 +256,12 @@
     (.resetTransform ctx 1 0 0 1 0 0)
     nil)
 
-  (spr! [this _ [x y] [w h]]
+  (spr! [this rimg [sx sy sw sh] [x y] [w h] ]
     (do
       (.save ctx)
-      (.drawImage ctx rimg 0 0 100 100 x y w h)
+      (.drawImage ctx rimg sx sy sw sh x y w h)
       (.restore ctx)
-      nil )
-    )
+      nil ))
 
   (square! [this [x y] [w h] color]
     (do

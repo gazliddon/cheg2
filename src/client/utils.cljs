@@ -7,7 +7,7 @@
 
     [servalan.fsm :as fsm]
 
-    [dommy.core             :as dommy :include-macros true]   
+    ; [dommy.core             :as dommy :include-macros true]   
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]))
 
 (defn add-fsm [this fsm-key table dispatcher ]
@@ -58,9 +58,9 @@
 
 (defn id-ize  [v] (str "#" v))
 
-(defn by-id
-  ( [v] (-> (id-ize v) (dommy/sel1)) )
-  ( [v b] (->> (id-ize v) (dommy/sel1 b)) ))
+; (defn by-id
+;   ( [v] (-> (id-ize v) (dommy/sel1)) )
+;   ( [v b] (->> (id-ize v) (dommy/sel1 b)) ))
 
 (defn get-dims [e] (mapv e [:width :height]))
 

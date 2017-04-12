@@ -10,7 +10,7 @@
   (resize! [_ dims])
   (reset-transform! [this])
   (clear-all! [this col])
-  (spr! [this img xy wh])
+  (spr! [this img src-xywh xy wh])
   (square! [this xy wh col]))
 
 (defprotocol IEvents
@@ -18,8 +18,8 @@
   (events-ch [this]))
 
 (defprotocol ILog
-  (log [this m ]))
+  (log [this m ])
+  
+  )
 
-(defprotocol IStatus
-  (get-status [_]))
 

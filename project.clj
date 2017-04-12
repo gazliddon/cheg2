@@ -16,14 +16,14 @@
 
                  [sablono "0.2.3"]
 
-                 [prismatic/dommy "1.1.0"]
+                 ; [prismatic/dommy "1.1.0"]
 
                  [hipo "0.5.2"]
 
                  [danlentz/clj-uuid "0.1.6"]
 
                  [jarohen/chord "0.8.1"]
-                 [compojure "1.5.2"]
+                 ; [compojure "1.5.2"]
 
                  [com.taoensso/timbre "4.8.0"]
 
@@ -32,7 +32,6 @@
                  [com.stuartsierra/component "0.3.2"]
 
                  [ring-middleware-format "0.7.2"]
-
 
                  [ring "1.5.1"]
 

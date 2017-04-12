@@ -2,6 +2,7 @@
 
   (:require
     [servalan.fsm :as fsm]
+    [client.sprdata :as sprdata]
 
     [taoensso.timbre :as t
      :refer-macros [log  trace  debug  info  warn  error  fatal  report
@@ -88,6 +89,13 @@
 
 (def objs (atom []))
 
+(def test-sprs sprdata/test-data)
+
+(def rimg (:img test-sprs))
+
+(def caps (-> test-sprs :sprs :caps ))
+
+
 (defn print! [renderer t]
   (let [red (* 255 (cos01 (*  t 1)))
         col [red 0 255]
@@ -96,8 +104,18 @@
     (doto renderer
       (p/clear-all! col)
       (draw-objs @objs t)
-      (p/square! (:pos @player) [10 10] [255 255 255] )
-      (p/spr! :poo [10 10] [400 400]))
+      ; (p/square! (:pos @player) [10 10] [255 255 255] )
+      
+      )
+
+    (into [] "hgello")
+
+    (let [pr! (partial p/spr! renderer rimg)]
+      (doseq [n (range 26)]
+        (pr! (nth caps n) [(* n 16) 0] [16 16 ]))
+      )
+
+      
     ))
 
 (defprotocol IGame
