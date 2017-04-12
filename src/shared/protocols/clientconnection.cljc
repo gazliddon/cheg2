@@ -1,4 +1,4 @@
-(ns servalan.protocols.clientconnection
+(ns shared.protocols.clientconnection
 
   )
 

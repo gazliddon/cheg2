@@ -1,4 +1,4 @@
-(ns servalan.messages
+(ns shared.messages
   )
 
 ;; Shared message creation etc

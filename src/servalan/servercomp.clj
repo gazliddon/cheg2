@@ -4,9 +4,11 @@
 
     [servalan.fsm :as fsm]
 
-    [servalan.messages :refer [mk-msg]]
+    [shared.messages :refer [mk-msg]]
+
     [servalan.protocols.connections :as IConns]
     [servalan.protocols.connection :as IConn]
+
     [servalan.connection :as c]
 
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  

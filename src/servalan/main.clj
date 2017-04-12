@@ -62,6 +62,7 @@
 (def config {:port 6502})
 
 (defn mk-system [{:keys [port ] :as config}]
+
   (t/info "creating system")
 
   (component/system-map

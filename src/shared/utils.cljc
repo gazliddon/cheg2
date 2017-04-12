@@ -1,4 +1,4 @@
-(ns servalan.utils
+(ns shared.utils
   (:require #?(:clj [org.httpkit.server :as http])
 
             #?(:clj

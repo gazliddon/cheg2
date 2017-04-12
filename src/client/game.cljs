@@ -11,9 +11,9 @@
 
     [com.stuartsierra.component :as c]
 
-    [servalan.messages :refer [mk-msg]]
+    [shared.messages :refer [mk-msg]]
 
-    [servalan.utils :as su]
+    [shared.utils :as su]
 
     [client.protocols :as p] 
 

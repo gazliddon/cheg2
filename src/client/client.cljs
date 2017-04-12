@@ -4,7 +4,7 @@
     [clojure.spec :as s ]
     [clojure.spec.test :as st ]
 
-    [servalan.utils :as su]
+    [shared.utils :as su]
     [client.utils :as cu]
 
     [taoensso.timbre :as t
@@ -13,11 +13,11 @@
                      spy get-env]]
     
 
-    [servalan.messages :refer [mk-msg]]
+    [shared.messages :refer [mk-msg]]
     [clojure.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
     [client.html :as html]
     [servalan.fsm :as fsm]
-    [servalan.protocols.clientconnection :as client]
+    [shared.protocols.clientconnection :as client]
     [com.stuartsierra.component :as c]
     [chord.client :as wsockets  ])
 

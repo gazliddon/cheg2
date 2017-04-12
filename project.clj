@@ -40,13 +40,13 @@
   :plugins [[lein-figwheel "0.5.9"]
             [lein-cljsbuild "1.1.5" :exclusions [[org.clojure/clojure]]]]
 
-  :source-paths ["src"]
+  :source-paths ["src/servalan" "src/shared"]
 
   :clean-targets ^{:protect false} ["resources/public/js/compiled" "target"]
 
   :cljsbuild {:builds
               [{:id "dev"
-                :source-paths ["src"]
+                :source-paths ["src/client" "src/shared"]
 
                 ;; the presence of a :figwheel configuration here
                 ;; will cause figwheel to inject the figwheel client
@@ -70,7 +70,7 @@
                ;; production. You can build this with:
                ;; lein cljsbuild once min
                {:id "min"
-                :source-paths ["src/client"]
+                :source-paths ["src/client" "src/shared"]
                 :compiler {:output-to "resources/public/js/compiled/client.js"
                            :main client.core
                            :optimizations :advanced

@@ -1,4 +1,4 @@
-(ns servalan.protocols.clientactions
+(ns shared.protocols.clientactions
   )
 
 (defprotocol IClientActions

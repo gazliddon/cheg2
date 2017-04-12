@@ -1,6 +1,6 @@
 (ns client.html
   (:require
-    [servalan.utils :as su]
+    [shared.utils :as su]
     [client.utils :as u]
     [com.stuartsierra.component :as c]
     [client.protocols :as p] 

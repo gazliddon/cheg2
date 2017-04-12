@@ -1,13 +1,13 @@
 (ns servalan.connection
 
   (:require 
-    [servalan.messages :refer [mk-msg]]
+    [shared.messages :refer [mk-msg]]
     [taoensso.timbre :as t ]
 
 
+    [shared.protocols.clientactions :as client]
 
     [servalan.protocols.connection :as connection]
-    [servalan.protocols.clientactions :as client]
 
     [servalan.fsm :as fsm]
     [servalan.macros :refer [dochan chandler]]

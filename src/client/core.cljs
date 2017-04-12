@@ -11,11 +11,11 @@
 
     [com.stuartsierra.component :as c]
 
-    [servalan.protocols.clientconnection :as client]
+    [shared.protocols.clientconnection :as client]
     [client.client :refer [mk-client-component]]
 
-    [servalan.messages :refer [mk-msg]]
-    [servalan.utils :as su]
+    [shared.messages :refer [mk-msg]]
+    [shared.utils :as su]
 
     [servalan.fsm :as fsm]
     [client.protocols :as p] 
