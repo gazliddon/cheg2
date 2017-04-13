@@ -96,8 +96,8 @@
 (def caps (-> test-sprs :sprs :caps ))
 
 
-(defn print! [renderer t]
-  (let [red (* 255 (cos01 (*  t 1)))
+(defn print-waiting! [renderer t]
+  (let [red (* 255 (cos01 (*  t 10)))
         col [red 0 255]
         fcol (apply u/to-color col) ]
 
@@ -105,6 +105,17 @@
       (p/clear-all! col)
       (draw-objs @objs t)
       ; (p/square! (:pos @player) [10 10] [255 255 255] )
+      
+      )
+
+      
+    ))
+
+
+(defn print! [renderer t]
+  (let [ ]
+    (doto renderer
+      (p/clear-all! [10 10 10])
       
       )
 
@@ -132,9 +143,10 @@
 
    :done {:getting-state :running-game
           :sending-to-server :running-game
-          :starting-game :running-game }
+          :starting-game :running-game
+          :stopping-game :none }
 
-   :quit {:running-game :none}
+   :quit {:running-game :stopping-game}
    })
 
 (defmulti game-state (fn [this ev payload] (:state ev)))
@@ -143,7 +155,10 @@
   (t/error "unhandled state entry" (:state ev)))
 
 (defmethod game-state :starting-game
-  [{:keys [state] :as this} ev payload]
+  [{:keys [state ui-chan] :as this} ev payload]
+
+  (put! ui-chan (mk-msg :game-started {} 0))
+
   (t/info "starting game")
   (swap! state assoc :id 1)
   (fsm/event! this :done {}))
@@ -151,12 +166,15 @@
 (defmethod game-state :running-game
   [{:keys [state] :as this} ev payload]
   ; (t/info "running game")
-  
   )
+
+(defmethod game-state :game-stopping
+  [{:keys [state ui-chan] :as this} ev payload]
+  (put! ui-chan (mk-msg :game-stopped {} 0))
+  (fsm/event! this :done {}) )
 
 (defmethod game-state :sending-to-server
   [{:keys [state] :as this} ev payload]  
-
   (fsm/event! this :done {}) )
 
 (defn add-listeners [{:keys [events com-chan] :as this}]
@@ -172,6 +190,7 @@
                (t/info "game handling com-chan msg " msg)
                (on-network this msg)
                (recur))
+
              (t/info "com-chan closed")))
 
       (go-loop
@@ -212,7 +231,7 @@
       ;; if there's state change then
       ;; tell the ui
       (when new-state
-        (put! ui-chan {:state new-state}))
+        (put! ui-chan (mk-msg :game-state-change {:state new-state} 0)))
 
       new-state))
 
@@ -233,20 +252,14 @@
 
         (fsm/event! this :send-to-server player-msg))
 
-      ;; Draw the things
-
-      ; (t/info (fsm/get-state this))
-
       (case (fsm/get-state this)
         :running-game (print! system t)
-        :default)
-
+        (print-waiting! system t))
       ))
 
   (on-message [_ msg] )
 
   c/Lifecycle
-
   (start [this]
 
     (t/info "Starting game component")
@@ -256,21 +269,17 @@
                          :started true )
                   (add-fsm :fsm game-state-table game-state )
                   (add-listeners))]
-      ret)
-    )
+      ret))
 
   (stop [this]
     (when started
-      (remove-fsm this :fsm)
-      
-      )
+      (remove-fsm this :fsm))
     (assoc this
            :started nil
            :state nil )))
 
 (defn mk-game[]
   (map->Game {}))
-
 
 
 

@@ -214,6 +214,7 @@
       (go-loop
         []
         (when-let [msg (<! ui-chan)]
+
           ; (t/info "got a message for the UI " msg)
           ;; do a condition for UI messages
           ;; make ui chan bidirectional-s

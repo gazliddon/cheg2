@@ -27,12 +27,11 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Canvas stuff
-
-(defn make-canvas-html [[ w h ]]
+(defn mk-canvas-element [[ w h ] id]
   (let [e (gdom/createElement "canvas")]
     (do
       (->>
-        #js {:width w :height h :id "canvas"}
+        #js {:width w :height h :id id}
         (gdom/setProperties e ))
       e)))
 
@@ -47,27 +46,28 @@
   "set every property we can control how
   scaled images are smoothed"
   [ctx v]
-  (set! (.-imageSmoothingEnabled  ctx) v) 
-  (set! (.-mozImageSmoothingEnabled  ctx) v) 
-  (set! (.-oImageSmoothingEnabled  ctx) v) 
-  (set! (.-webkitImageSmoothingEnabled  ctx) v) 
-  (set! (.-msImageSmoothingEnabled  ctx) v))
+  (do
+    (set! (.-imageSmoothingEnabled  ctx) v) 
+    (set! (.-mozImageSmoothingEnabled  ctx) v) 
+    (set! (.-oImageSmoothingEnabled  ctx) v) 
+    (set! (.-webkitImageSmoothingEnabled  ctx) v) 
+    (set! (.-msImageSmoothingEnabled  ctx) v)
+    nil))
 
 (defn add-game-html! [game-el]
 
   (let [wh [(.-offsetWidth game-el ) 500 ]
-        canvas-html (make-canvas-html wh)
-        ctx (.getContext canvas-html "2d") ]
+        canvas-el (mk-canvas-element wh "canvas")
+        ctx (.getContext canvas-el "2d") ]
 
     (do
       (gdom/removeNode (find-canvas))
-      (gdom/appendChild game-el canvas-html )
+      (gdom/appendChild game-el canvas-el)
       (ctx-smoothing! ctx false)
 
       {:ctx ctx 
-       :html canvas-html
+       :html canvas-el
        :wh wh })))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Events
@@ -113,10 +113,7 @@
     :xf (map #(ev->key-event % :keyup)) } 
 
    {:event resize-events
-    :xf (map ev->resizer) }
-   
-   ] 
-  )
+    :xf (map ev->resizer) } ] )
 
 (defn setup-event [{:keys [event xf]}]
   (deaf! event)
