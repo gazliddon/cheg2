@@ -93,13 +93,11 @@
 
 ;; listen to a type of key event
 (defn ev->key-event [ev id]
-  (mk-msg :key
-          {:event id
-           :keypres (->
-                      ev
-                      (.-event_)
-                      (.-key)
-                      (keyword)) }))
+  (mk-msg :key {:event id
+                :keypres (-> ev
+                             (.-event_)
+                             (.-key)
+                             (keyword)) }))
 
 (defn ev->resizer [ev]
   (mk-msg :resize (u/get-win-dims)))

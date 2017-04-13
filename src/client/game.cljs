@@ -168,7 +168,7 @@
   ; (t/info "running game")
   )
 
-(defmethod game-state :game-stopping
+(defmethod game-state :stopping-game
   [{:keys [state ui-chan] :as this} ev payload]
   (put! ui-chan (mk-msg :game-stopped {} 0))
   (fsm/event! this :done {}) )
@@ -264,6 +264,8 @@
 
     (t/info "Starting game component")
 
+    (put! ui-chan (mk-msg :game-connecting {} 0))
+
     (let [ret (-> (c/stop this)
                   (assoc :state (atom {:id -1})
                          :started true )
@@ -273,6 +275,7 @@
 
   (stop [this]
     (when started
+      (fsm/event! this :quit {})
       (remove-fsm this :fsm))
     (assoc this
            :started nil

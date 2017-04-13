@@ -150,7 +150,14 @@
   [{:keys [state]} _ params]
   {:action (fn [] (swap! state assoc :game-running false)) })
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defmethod mutate-fn `game/set-field
+
+  [{:keys [state] :as env} key {:keys [field value]}]
+  {:action (fn[] (swap!
+                   state
+                   assoc-in [:game-status field] value))})
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -203,8 +210,14 @@
     {:state app-state
      :parser (om/parser {:read reader-fn :mutate mutate-fn})}))
 
+(defn set-field! [k v]
+  (om/transact! reconciler `[(game/set-field {:field ~k :value ~v} )]))
+
+(defn set-game-state! [v]
+  (set-field! :game-state v))
 
 (defn main []
+
   (let [app-el (gdom/getElement "app") ]
     (do
       (om/add-root! reconciler
@@ -214,13 +227,23 @@
       (go-loop
         []
         (when-let [msg (<! ui-chan)]
+          (do
+            (case (:type msg)
 
-          ; (t/info "got a message for the UI " msg)
-          ;; do a condition for UI messages
-          ;; make ui chan bidirectional-s
-          (recur))))
+                  :game-connecting (set-game-state! :connecting)
+                  :game-started (set-game-state! :running)
+                  :game-stopped (set-game-state! :stopped)
 
+                  :default))
+
+          (recur) )
+        (t/error "ui-chan is dead! FIX THIS")
+        ))
     ))
+
+
+
+
 
 (defn stop []
  (when @sys-atom
