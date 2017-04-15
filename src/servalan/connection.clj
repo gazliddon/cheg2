@@ -68,20 +68,18 @@
   (do
     (t/info "handling local msg " payload)
     (when-not (put! ws-channel payload)
-      (t/error "trouble sending to client")
-
-    
-    )
+      (t/error "TBD: trouble sending to client, drop connection here"))
     (fsm/event! this :done payload)))
 
 (defmethod state-change :default [this ev payload]
     (t/info "unhandled event " )   
     (t/info "ev -> " ev )   
     (t/info "payload - > " payload )   )
+
 (defprotocol IStatus
   (get-status [_]))
 
-(defrecord Connection [id req fsm ws-channel com-chan kill-chan]
+(defrecord Connection [id req fsm ws-channel com-chan kill-chan last-ping]
 
   IStatus
 
@@ -128,7 +126,7 @@
                     :req "no req"
                     :ws-channel ws-channel
                     :com-chan (chan)
-                    :kill-chan (chan)}))
+                    :kill-chan (chan) }))
 
 ;; TODO
 ;; This is shit
@@ -165,9 +163,9 @@
       ;; from remote
       (go-loop
         []
-        (let [{:keys [error message] } (<! ws-channel) ]
+        (let [{:keys [error message] :as incoming} (<! ws-channel) ]
 
-          (if message
+          (if incoming
             (if error
               (stop-fn "error from websocket channel")
 

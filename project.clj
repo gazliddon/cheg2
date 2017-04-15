@@ -22,7 +22,11 @@
 
                  [com.taoensso/timbre "4.8.0"]
 
-                 [org.omcljs/om "1.0.0-alpha34"] 
+                 ; [org.omcljs/om "1.0.0-alpha34"] 
+
+                 [org.omcljs/om "1.0.0-alpha34" :exclusions [cljsjs/react cljsjs/react-dom]]
+
+                 [cljsjs/material-ui "0.17.3-0"] 
 
                  [com.stuartsierra/component "0.3.2"]
 

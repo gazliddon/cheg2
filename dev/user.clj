@@ -62,14 +62,10 @@
   (alter-var-root #'system
     (fn [s] (when s (component/stop s)))))
 
-
 (defn kill-all []
   (->
     (:connections system)
     (IConns/close-all!)))
-
-
-(:connections system)
 
 (defn go []
   (main/init-logging)

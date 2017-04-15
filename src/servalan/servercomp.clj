@@ -95,20 +95,17 @@
   component/Lifecycle
 
   (start [this]
-    (if-not connections-atom
-      (do
+    (let [this (component/stop this)]
         (t/info "starting connections component")
-        (assoc this :connections-atom (atom {})) )
-
-      this))
+        (assoc this
+               :connections-atom (atom {}))))
 
   (stop [this]
-    (if connections-atom
-      (do
-        (t/info "stopping connections component")
-        (IConns/close-all! this)
-        (assoc this :connections-atom nil))
-      this))
+    (when connections-atom
+      (t/info "stopping connections component")
+      (IConns/close-all! this))
+    
+      (assoc this :connections-atom nil)  )
 
   IConns/IConnections
 
@@ -118,9 +115,7 @@
                                          (is-alive? v)) @connections-atom))]
 
         (t/info "cleaning up connections " (count @connections-atom))
-
         (reset! connections-atom (into {} new-conns))
-
         (t/info "cleaned up connections " (count @connections-atom)) 
         ))
 
@@ -139,7 +134,6 @@
         (when-not has-con
 
           (swap! connections-atom assoc (:id conn) conn)
-
           (IConn/command! conn (mk-msg :hello-from-server {:id id } 0) ))
 
         nil)))
@@ -171,7 +165,7 @@
 (defn- get-connections [this ]
   (:connections this))
 
-(defrecord Server [connections config server-inst ]
+(defrecord Server [connections config server-inst]
 
   component/Lifecycle
 

@@ -1,5 +1,6 @@
 (ns servalan.main
   (:require 
+    [servalan.component.pinger :refer [mk-pinger] ]
     [taoensso.timbre :as t ]
     [taoensso.timbre.appenders.core :as appenders]
 
@@ -61,6 +62,8 @@
 
 (def config {:port 6502})
 
+
+
 (defn mk-system [{:keys [port ] :as config}]
 
   (t/info "creating system")
@@ -71,6 +74,10 @@
 
     :connect-ch (a/chan)
 
+    :pinger (component/using
+              (mk-pinger)
+              [:connections])
+
     :connections (component/using 
                    (connections-component) 
                    [:config])
@@ -79,8 +86,7 @@
               (server-component)
               [:connect-ch :connections :config])
 
-    :app (component/using (map->App {}) 
-                          [:server :config])))
+    :app (component/using (map->App {}) [:server :config])))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -63,7 +63,6 @@
 
   (c/system-map
 
-    :ui-chan ui-chan
 
     :com-chan (mk-bidi-chan)
 
@@ -71,41 +70,32 @@
 
     :system (mk-html-component (:html-id config))
 
-    :events (mk-html-events-component )
+    :events (mk-html-events-component)
+
+    :ui-chan ui-chan
 
     :client-connection (c/using
-                        ( mk-client-component (:conn-config config) )
-                        [:com-chan
-                         :ui-chan ])
+                         ( mk-client-component (:conn-config config) )
+                         [:com-chan
+                          :ui-chan])
 
-    :game (c/using (game/mk-game)
-                          [:com-chan
-                           :ui-chan
-                           :client-connection
-                           :events
-                           :system
-                           :config])
+    :game (c/using 
+            (game/mk-game)
+            [:com-chan
+             :ui-chan
+             :client-connection
+             :events
+             :system
+             :config])
     )
   )
 
 
 (defonce sys-atom (atom nil))
 
-
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (def objs (atom []))
-
-(def state (atom {:server-time 0 
-                  :conn-status :disconnected
-                  :time 0 
-
-                  :pings {:last-ping 0 
-                          :last-pong 0    } }))
 
 (enable-console-print!)
 
@@ -115,24 +105,13 @@
    ;; (swap! app-state update-in [:__figwheel_counter] inc)
 )
 
-
-(def app-state (atom {:conn-status :disconnected
-
-                      :game-status {:running false
-                                    :state nil
-                                    }
-
-                      :game-running false }))
+(def app-state (atom {:game-status {:running false
+                                    :game-state :stopped
+                                    :log [] } }))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (defmulti reader-fn om/dispatch)
-
-; (defmethod reader-fn :game-satus
-;  [{:keys [state query] :as this } k k2]
-;  {:value (:game @state)})
-
 
 (defmethod reader-fn :default
  [{:keys [state]} k _]
@@ -142,66 +121,72 @@
 
 (defmulti mutate-fn om/dispatch)
 
-(defmethod mutate-fn `game/start
-  [{:keys [state]} _ params]
-  {:action (fn[] (swap! state assoc :game-running true))})
-
-(defmethod mutate-fn `game/stop
-  [{:keys [state]} _ params]
-  {:action (fn [] (swap! state assoc :game-running false)) })
-
 (defmethod mutate-fn `game/set-field
-
   [{:keys [state] :as env} key {:keys [field value]}]
-  {:action (fn[] (swap!
-                   state
-                   assoc-in [:game-status field] value))})
+  {:action (fn[] (swap! state assoc-in [:game-status field] value))})
 
+(def max-log-entries 10)
 
+(defmethod mutate-fn `game/log
+  [{:keys [state] :as env} _ {:keys [payload]}]
+  (let [log (-> @state :game-status :log )
+        new-log (take max-log-entries (conj log payload)) ]
+    {:action (fn[] (swap! state assoc-in [:game-status :log] new-log))}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn mk-button [this txt transaction action]
+(defn mk-button [this txt action]
   [:button
    {:class  "pure-button pure-button-primary"
-    :on-click (fn []
-                (action)
-                (om/transact! this transaction)) }
-   txt]
+    :on-click (fn [] (action))}
+   txt])
 
-  ; [:button
-  ;  {:class  "pure-button pure-button-primary"
+(defn pad-coll [sz padding coll]
+  (take sz
+        (concat coll (take sz (repeat padding)))))
 
-  ;   :on-click (fn []
-  ;               (action)
-  ;               (om/transact! this transaction)) }
-  ;  txt]
-  )
+(defn log-window [this {:keys [log] :as props}]
+  (let [lst (->>
+              log
+              (pad-coll 10 "!")
+              (reverse)
+              ; (interpose "\n")
+              (mapv (fn [v][:p (str v)]))
+              (into [:div {:class "log"} ]))]
+    (html
+      lst)))
 
 
 
-(def ui-chan (mk-bidi-chan))
+
 
 (defui App
 
   static om/IQuery
+
   (query [this] '[:game-status])
 
   Object
 
   (render [this]
           (let [{:keys [game-status] :as props} (om/props this)
-                running (:running game-status) ]
+                {:keys [running game-state]} game-status ]
             (html
               [:div
-               [:h1 "Cheg"]
+               [:h1 "Chuckie Egg"]
 
-               (if running
-                 (do
-                   (mk-button this "Quit" `[(game/stop)] stop) )
+               (log-window this game-status)
 
-                 (mk-button this "Start" `[(game/start)] start)) ]
+               [:p (str "Game state: " (-> game-state name str) )]
+
+               (case game-state
+                 :stopped (mk-button this "Start" start)
+                 :running (mk-button this "Stop" stop)
+                 :connecting (mk-button this "Connecting" identity)
+                 (mk-button this "" identity)) ]
               ))))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def reconciler
@@ -210,47 +195,48 @@
     {:state app-state
      :parser (om/parser {:read reader-fn :mutate mutate-fn})}))
 
-(defn set-field! [k v]
+(defn set-ui-field! [k v]
   (om/transact! reconciler `[(game/set-field {:field ~k :value ~v} )]))
 
-(defn set-game-state! [v]
-  (set-field! :game-state v))
+(defn set-ui-game-state! [v]
+  (set-ui-field! :game-state v))
+
+(defn mk-ui-listener [ch]
+  (go-loop
+    []
+    (when-let [msg (<! ch)]
+      (do
+        (case (:type msg)
+          :game-connecting (set-ui-game-state! :connecting)
+          :game-started (set-ui-game-state! :running)
+          :game-stopped (set-ui-game-state! :stopped)
+          :log (do
+                 (println "logging!")
+                 (om/transact! reconciler `[(game/log ~msg)]))
+
+          
+          :default))
+
+      (recur) )
+
+    (t/error "ui-chan is dead! FIX THIS")) )
+
+(def ui-chan (chan))
 
 (defn main []
 
   (let [app-el (gdom/getElement "app") ]
     (do
-      (om/add-root! reconciler
-                    App app-el)
-
+      (om/add-root! reconciler App app-el)
       ;; listen for any msg to the UI
-      (go-loop
-        []
-        (when-let [msg (<! ui-chan)]
-          (do
-            (case (:type msg)
-
-                  :game-connecting (set-game-state! :connecting)
-                  :game-started (set-game-state! :running)
-                  :game-stopped (set-game-state! :stopped)
-
-                  :default))
-
-          (recur) )
-        (t/error "ui-chan is dead! FIX THIS")
-        ))
-    ))
-
-
-
-
+      (mk-ui-listener ui-chan))))
 
 (defn stop []
  (when @sys-atom
 
   (c/stop-system @sys-atom)
 
-  (doseq [c [:com-chan :ui-chan]]
+  (doseq [c [:com-chan]]
     (close! (get @sys-atom c)))
 
   (reset! sys-atom nil)) )
@@ -264,7 +250,6 @@
       (reset! sys-atom ))  
     
     (-> @sys-atom :client-connection client/connect!)))
-
 
 (stop)
 (main)

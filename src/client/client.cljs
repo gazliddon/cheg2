@@ -72,7 +72,7 @@
 
    :connect  {:none :is-connecting
               :has-disconnected :is-connecting }
-   
+
    :local-message {:has-connected :handling-local-msg }
 
    :remote-message {:has-connected :handling-remote-msg }
@@ -80,28 +80,20 @@
    :done    {:handling-local-msg :has-connected
              :handling-remote-msg :has-connected
              :is-connecting :has-connected
-
              :is-disconnecting :has-disconnected
-
-             :is-killing-connection :has-disconnected
-             :is-handling-socket-error :has-disconnected
-             :is-handling-remote-socket-closed :has-disconnected
-
-             :is-handling-connection-error :has-disconnected
-
              :has-disconnected :none }
 
    :disconnect {:is-connecting :is-disconnecting
                 :has-connected :is-disconnecting }
 
-   :kill-connection {:has-connected :is-killing-connection
-                     :is-disconnecting :has-disconnected }
+   :remote-socket-error {:is-connecting :is-disconnecting
+                         :has-connected :is-disconnecting }
 
-   :remote-socket-error {:has-connected :is-handling-socket-error}
+   :remote-socket-closed {:is-connecting :is-disconnecting
+                          :has-connected :is-disconnecting }
 
-   :remote-socket-closed {:has-connected :is-handling-remote-socket-closed}
-
-   :connection-error {:is-connecting :is-handling-connection-error} })
+   :connection-error {:is-connecting :is-disconnecting
+                      :has-connected :is-disconnecting } })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -125,82 +117,71 @@
     (fsm/event! this :done {} )))
 
 (defmethod new-state :is-disconnecting
-  [{:keys [connection config] :as this} ev payload]
-  (swap! connection close-all-chans!)
+  [{:keys [connection config kill-chan] :as this} ev payload]
+  (put! kill-chan {:kill-msg "is-disconnecting"})
   (fsm/event! this :done {} ))
 
-(defmethod new-state :is-killing-connection
-  [{:keys [connection config] :as this} ev payload]
-  (swap! connection close-all-chans!)
-  (fsm/event! this :done {} ))
-
-(defmethod new-state :is-handling-socket-error
-  [{:keys [connection config] :as this} ev payload]
-  (swap! connection close-all-chans!)
-  (fsm/event! this :done this))
-
-(defmethod new-state :is-handling-remote-socket-closed
-  [{:keys [connection config] :as this} ev payload]
-  (swap! connection close-all-chans!)
-  (fsm/event! this :done this))
 
 (defmethod new-state :is-connecting
-  [this ev {:keys [url com-chan] :as payload}]
+  [{:keys [ui-chan com-chan connection kill-chan] :as this} ev {:keys [url] :as payload}]
 
   (go
-    (let [connection (:connection this)
-          ch (wsockets/ws-ch url) 
-          {:keys [ws-channel error] :as k} (<! ch)]
+    (let [ch (wsockets/ws-ch url) 
+          {:keys [ws-channel error] :as k} (<! ch) ]
 
       (if error
         ;; An error
+
         (fsm/event! this :connection-error {:error error})
 
         ;; Hunky dory
 
-        (let [kill-chan (chan) ]
-          (do
-            (-> (:connection this)
-                (reset! {:ws-channel ws-channel
-                         :kill-chan kill-chan }))
+        (do
+          (-> (:connection this)
+              (reset! {:ws-channel ws-channel
+                       :kill-chan kill-chan
+                       :original-chan ch }))
 
-            (fsm/event! this :done {})
+          (fsm/event! this :done {})
 
-            ;; Kill channel - send anything to this an all will close
-            (dochan
-              [msg kill-chan]
-              (swap! connection close-all-chans!)
-              (fsm/event! this :kill-connection {:kill-msg msg}))
+          ;; Kill channel - send anything to this an all will close
+          (go
+            (when-let [msg (<! kill-chan)]
+              (swap! connection close-all-chans!)))
 
-            ;; handle the any local messages we receive
+          ;; handle the any local messages we receive
 
-            (go-loop
-              []
-              (if-let [msg (<! com-chan)]
+          (go-loop
+            []
+            (if-let [msg (<! com-chan)]
 
-                (do ;; yes
-                    (fsm/event! this :local-message msg) 
-                    (recur))
+              (do ;; yes
+                  (fsm/event! this :local-message msg) 
+                  (recur))
 
-                (do ;; no
-                    (>! kill-chan :com-chan-closed))))
+              (do ;; no
+                  (t/info "com chan process killed")
+                  (>! kill-chan :com-chan-closed))))
 
-            ;; handle remote message channel
-            ;; we're in a go block already
-            (loop []
-              (if-let [{:keys [error message] :as raw-message} (<! ws-channel)]
-                (if error
-                  (do ;; an error!
-                      (fsm/event! this :remote-socket-error {})
-                      (>! kill-chan :remote-socket-error))
+          ;; handle remote message channel
+          ;; we're in a go block already
 
-                  (do ;; all fine
-                      (fsm/event! this :remote-message message)
-                      (recur)))
+          (loop []
+            (if-let [{:keys [error message] :as raw-message} (<! ws-channel)]
+              (if error
+                (do ;; an error!
+                    (fsm/event! this :remote-socket-error {})
+                    (>! kill-chan :remote-socket-error))
 
-                (do  ;; nil from ws-channel
-                    (fsm/event! this :remote-socket-closed {})         
-                    (>! kill-chan :remote-socket-closed))))))))))
+                (do ;; all fine
+                    (put! ui-chan (mk-msg :log message 0))
+                    (fsm/event! this :remote-message message)
+                    (recur)))
+
+              (do  ;; nil from ws-channel
+                  (t/info "ws-channel process closed")
+                  (fsm/event! this :remote-socket-closed {})         
+                  (>! kill-chan :remote-socket-closed)))))))))
 
 
 (defmethod new-state :has-connected
@@ -208,10 +189,6 @@
 
 (defmethod new-state :has-disconnected
   [{:keys [] :as this} ev payload]
-  (fsm/event! this :done {}))
-
-(defmethod new-state :is-handling-connection-error
-  [{:keys [connection config] :as this} ev payload]
   (fsm/event! this :done {}))
 
 (defmethod new-state :none
@@ -225,7 +202,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord ClientComponent [ui-chan com-chan config connection fsm ] 
+(defrecord ClientComponent [ui-chan com-chan config connection fsm kill-chan] 
 
   fsm/IStateMachine
 
@@ -236,7 +213,8 @@
 
   (state? [this ] (fsm/get-state @fsm))
 
-  (disconnect! [this] (fsm/event! this :disconnect {}))
+  (disconnect! [this]
+    (fsm/event! this :disconnect {}))
 
   (connect! [this]
     (fsm/event!
@@ -247,19 +225,23 @@
   c/Lifecycle
 
   (start [this]
-    (if connection
-      this
+    (let [this (c/stop this)]
       (->
         this
-        (assoc :connection (atom nil))    
+
+        (assoc :connection (atom nil)
+               :kill-chan (chan) )
+
         (cu/add-fsm :fsm conn-state-table new-state))))
 
   (stop [this]
     (when connection
       (t/info "stoping connection")
-      (cu/remove-fsm this :fsm)
-      (client/disconnect! this))
-    (assoc this :connection nil)))
+      (put! kill-chan {:kill-msg "stopped"})
+      (cu/remove-fsm this :fsm))
+       
+    (assoc this :connection nil
+                :kill-chan nil)))
 
 (defn mk-client-component [config] (map->ClientComponent {:config config }))
 
