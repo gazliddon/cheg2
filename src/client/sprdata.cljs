@@ -103,6 +103,7 @@
 (defn get-bank [bank]
   (-> spr-data bank))
 
+
 (defn get-group [bank group]
   (-> spr-data bank :sprs group))
 

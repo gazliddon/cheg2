@@ -46,7 +46,6 @@
   (apply close-chans! chans-hash (keys chans-hash)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defn create-connection-process [event! com-chan kill-chan ws-channel]
 
   (let [connection (atom {:ws-channel ws-channel
@@ -54,7 +53,7 @@
     (go
       ;; Hunky dory
       (do
-        (event! :connect {}) 
+        (event! :done {}) 
 
         ;; Kill channel - send anything to this an all will close
 
@@ -91,7 +90,5 @@
 
             (do  ;; nil from ws-channel
                 (event! :remote-socket-closed {})         
-                (>! kill-chan :remote-socket-closed))))))
-
-    connection))
+                (>! kill-chan :remote-socket-closed))))))))
 

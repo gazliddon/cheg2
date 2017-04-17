@@ -100,7 +100,6 @@
       (p/clear-all! col)
       (draw-objs @objs t)
       ; (p/square! (:pos @player) [10 10] [255 255 255] )
-      
       )
       
     ))
@@ -114,8 +113,19 @@
     (doto renderer
       (p/clear-all! [10 10 10]))
 
-    (doseq [n (range 10 )]
-      (p/spr! renderer rimg (nth group n) [(* n 16 scale) 0] [32 32]))
+    (doseq [n (range 18 )]
+      (let [ypos (-> t
+                     (+ (/ n 20))
+                     (* 10)
+                     cos01
+                     (* 30)
+                     
+                     (+ 10))]
+        
+      (p/spr! renderer rimg (nth group n) [(* n 16 scale) ypos] [32 32]) 
+        )
+
+      )
     ))
 
 (defprotocol IGame
