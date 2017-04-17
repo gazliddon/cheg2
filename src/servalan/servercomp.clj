@@ -90,6 +90,9 @@
 
 ;;;;;;;;;;
 
+
+
+
 (defrecord Connections [connections-atom]
 
   component/Lifecycle
@@ -116,8 +119,7 @@
 
         (t/info "cleaning up connections " (count @connections-atom))
         (reset! connections-atom (into {} new-conns))
-        (t/info "cleaned up connections " (count @connections-atom)) 
-        ))
+        (t/info "cleaned up connections " (count @connections-atom))))
 
     nil)
 

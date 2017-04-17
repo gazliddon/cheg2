@@ -13,11 +13,11 @@
 
     [shared.messages :refer [mk-msg]]
 
-    [shared.utils :as su]
+    [shared.utils :refer [add-fsm remove-fsm] :as su]
 
     [client.protocols :as p] 
 
-    [client.utils :refer [ch->coll cos cos01 add-fsm remove-fsm] :as u]
+    [client.utils :refer [ch->coll cos cos01 ] :as u]
 
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
 
@@ -89,11 +89,6 @@
 
 (def objs (atom []))
 
-(def test-sprs sprdata/test-data)
-
-(def rimg (:img test-sprs))
-
-(def caps (-> test-sprs :sprs :caps ))
 
 
 (defn print-waiting! [renderer t]
@@ -107,26 +102,20 @@
       ; (p/square! (:pos @player) [10 10] [255 255 255] )
       
       )
-
       
     ))
 
-
 (defn print! [renderer t]
-  (let [ ]
+  (let [spr-bank (sprdata/get-bank :pickups)
+      group (sprdata/get-group :pickups :pickups)
+      rimg (:img spr-bank)
+      scale 2 ]
+
     (doto renderer
-      (p/clear-all! [10 10 10])
-      
-      )
+      (p/clear-all! [10 10 10]))
 
-    (into [] "hgello")
-
-    (let [pr! (partial p/spr! renderer rimg)]
-      (doseq [n (range 26)]
-        (pr! (nth caps n) [(* n 16) 0] [16 16 ]))
-      )
-
-      
+    (doseq [n (range 10 )]
+      (p/spr! renderer rimg (nth group n) [(* n 16 scale) 0] [32 32]))
     ))
 
 (defprotocol IGame

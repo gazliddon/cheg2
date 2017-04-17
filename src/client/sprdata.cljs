@@ -54,7 +54,6 @@
              (int (/ n w)) ]))
         (mapv (range (* w h)))))))
 
-
 (defn grab-font [{:keys [grab sprs]}]
   (let [{:keys [grid-base grid-cell-dims]} grab
         grab-gen (mk-grabber grid-base grid-cell-dims )]
@@ -67,8 +66,7 @@
 (defn mk-html-sprs [{:keys [img] :as original}]
   {:sprs (grab-font original)
    :img (gdom/getElement (name img))
-   :original original
-   })
+   :original original })
 
 (def big-font {:img :robey
 
@@ -77,11 +75,44 @@
 
                :sprs {:caps [[0 0 18 1]
                              [0 1  8 1]]
-                      :nums [[0 1 9 10]] } })
+                      :nums [[0 1 9 10]] }
+               })
+
+(def pickups {:img :robey
+              :grab {:grid-base [0 263]
+                     :grid-cell-dims [16 16] }
+
+              :sprs {:pickups [[0 0 18 1] ] } })
+
+(def sprs {:big-font big-font
+           :pickups   pickups })
+
+(defn mk-spr-data []
+  (->
+    (fn [res k v]
+      (println k v)
+      (assoc res k (mk-html-sprs v)))
+    (reduce-kv {} sprs) ))
 
 
-(def test-data (mk-html-sprs big-font))
+(def spr-data (mk-spr-data))
 
-(:img test-data)
+(defn get-frame [spr-bank group n]
+  (-> spr-bank :sprs group (nth n)))
+
+(defn get-bank [bank]
+  (-> spr-data bank))
+
+(defn get-group [bank group]
+  (-> spr-data bank :sprs group))
+
+(defn get-spr [bank group n]
+  (let [box (-> spr-data bank :sprs group (nth n) )]
+    {:img (-> spr-data bank :img)
+     :spr box }))
+
+
+
+
 
 

@@ -4,7 +4,8 @@
     [clojure.spec :as s ]
     [clojure.spec.test :as st ]
 
-    [shared.utils :as su]
+    [shared.utils :refer [add-fsm remove-fsm] :as su]
+
     [client.utils :as cu]
 
     [taoensso.timbre :as t
@@ -232,13 +233,13 @@
         (assoc :connection (atom nil)
                :kill-chan (chan) )
 
-        (cu/add-fsm :fsm conn-state-table new-state))))
+        (add-fsm :fsm conn-state-table new-state))))
 
   (stop [this]
     (when connection
       (t/info "stoping connection")
       (put! kill-chan {:kill-msg "stopped"})
-      (cu/remove-fsm this :fsm))
+      (remove-fsm this :fsm))
        
     (assoc this :connection nil
                 :kill-chan nil)))
