@@ -90,7 +90,6 @@
 (defn mk-spr-data []
   (->
     (fn [res k v]
-      (println k v)
       (assoc res k (mk-html-sprs v)))
     (reduce-kv {} sprs) ))
 
@@ -103,7 +102,6 @@
 (defn get-bank [bank]
   (-> spr-data bank))
 
-
 (defn get-group [bank group]
   (-> spr-data bank :sprs group))
 
@@ -111,9 +109,4 @@
   (let [box (-> spr-data bank :sprs group (nth n) )]
     {:img (-> spr-data bank :img)
      :spr box }))
-
-
-
-
-
 

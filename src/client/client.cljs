@@ -78,12 +78,13 @@
                       :has-connected :is-disconnecting } })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defmulti new-state (fn [_ ev _] (:state ev)))
 
 (defmethod new-state :handling-local-msg
-  [{:keys [ws-channel] :as this} ev payload]
+  [{:keys [ws-atom] :as this} ev payload]
   (do
-    (put! ws-channel payload)
+    (put! @ws-atom payload)
     (fsm/event! this :done {} )))
 
 (defmethod new-state :handling-remote-msg
@@ -98,8 +99,7 @@
   (fsm/event! this :done {} ))
 
 (defmethod new-state :is-connecting
-  [{:keys [com-chan kill-chan] :as this} ev {:keys [url] :as payload}]
-
+  [{:keys [ws-atom com-chan kill-chan] :as this} ev {:keys [url] :as payload}]
   (go
     (let [ch (wsockets/ws-ch url) 
           {:keys [ws-channel error] :as k} (<! ch)
@@ -109,18 +109,17 @@
         ;; An error
         (event! :connection-error {:error error})
         ;; hunky dory
-        (create-connection-process event! com-chan kill-chan ws-channel)))))
-
-(defmethod new-state :has-connected
-  [{:keys [com-chan] :as this} ev payload])
+        (do
+          (reset! ws-atom ws-channel)
+          (create-connection-process event! com-chan kill-chan ws-channel))
+        ))))
 
 (defmethod new-state :has-disconnected
-  [{:keys [] :as this} ev payload]
+  [this _ _]
   (fsm/event! this :done {}))
 
-(defmethod new-state :none
-  [{:keys [config] :as this} ev payload]
-  (t/info "no state : disconnected"))
+(defmethod new-state :none [this ev payload])
+(defmethod new-state :has-connected [this ev payload])
 
 (defmethod new-state :default [{:keys [config] :as this} ev payload]
   (t/error "missing state entry function " (:state ev))
@@ -128,11 +127,12 @@
   (t/error "payload -> " payload))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord ClientComponent [started? ui-chan com-chan config fsm kill-chan] 
+(defrecord ClientComponent [started? ui-chan com-chan config fsm kill-chan ws-atom] 
 
   fsm/IStateMachine
 
   (get-state [this ] (fsm/get-state @fsm))
+
   (event! [this ev payload] (fsm/event! @fsm ev payload))
 
   client/IClientConnection
@@ -154,9 +154,9 @@
     (let [this (c/stop this)]
       (->
         this
-
         (assoc :started? true 
-               :kill-chan (chan) )
+               :kill-chan (chan)
+               :ws-atom (atom nil))
 
         (add-fsm :fsm conn-state-table new-state))))
 
@@ -167,7 +167,8 @@
       (remove-fsm this :fsm))
        
     (assoc this :started? nil
-                :kill-chan nil)))
+                :kill-chan nil
+                :ws-atom nil)))
 
 (defn mk-client-component [config] (map->ClientComponent {:config config }))
 

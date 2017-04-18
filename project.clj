@@ -22,16 +22,10 @@
 
                  [com.taoensso/timbre "4.8.0"]
 
-                 ; [org.omcljs/om "1.0.0-alpha34"] 
-
-                 [org.omcljs/om "1.0.0-alpha34" :exclusions [cljsjs/react cljsjs/react-dom]]
-
-                 [cljsjs/material-ui "0.17.3-0"] 
+                 [org.omcljs/om "1.0.0-alpha34"] 
 
                  [com.stuartsierra/component "0.3.2"]
-
                  [ring-middleware-format "0.7.2"]
-
                  [ring "1.5.1"]
 
                  [org.clojure/core.async "0.2.395" :exclusions [org.clojure/tools.reader]]]
