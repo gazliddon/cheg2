@@ -1,6 +1,7 @@
 (ns shared.connhelpers
   (:require
     [servalan.fsm :as fsm]
+    [shared.utils :as su]
 
     #?(:clj [org.httpkit.server :as http])
 
@@ -44,6 +45,43 @@
 
 (defn close-all-chans! [chans-hash]
   (apply close-chans! chans-hash (keys chans-hash)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def conn-state-table
+
+  {:listen {:none :is-listening }
+
+   :connect  {:none :is-connecting
+              :has-disconnected :is-connecting }
+
+   :local-message {:has-connected :handling-local-msg }
+
+   :remote-message {:has-connected :handling-remote-msg }
+
+   :done    {:handling-local-msg :has-connected
+             :handling-remote-msg :has-connected
+             :is-connecting :has-connected
+             :is-disconnecting :has-disconnected
+             :has-disconnected :none }
+
+   :disconnect {:is-connecting :is-disconnecting
+                :has-connected :is-disconnecting }
+
+   :remote-socket-error {:is-connecting :is-disconnecting
+                         :has-connected :is-disconnecting }
+
+   :remote-socket-closed {:is-connecting :is-disconnecting
+                          :has-connected :is-disconnecting }
+
+   :connection-error {:is-connecting :is-disconnecting
+                      :has-connected :is-disconnecting } })
+
+(defn add-connection-fsm [this key handler]
+  (su/add-fsm this key conn-state-table handler))
+
+(defn remove-connection-fsm [this key]
+  (su/remove-fsm this key))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn create-connection-process [event! com-chan kill-chan ws-channel]

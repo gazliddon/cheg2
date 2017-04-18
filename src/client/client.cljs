@@ -5,7 +5,10 @@
     [clojure.spec :as s ]
     [clojure.spec.test :as st ]
 
-    [shared.connhelpers :refer [create-connection-process ] :as ch]
+    [shared.connhelpers :refer [create-connection-process
+                                add-connection-fsm
+                                remove-connection-fsm
+                                ] :as ch]
 
     [shared.utils :refer [add-fsm
                           remove-fsm ] :as su]
@@ -33,49 +36,6 @@
 
 (enable-console-print!)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defonce clock (atom 0))
-
-(defn get-time []
-
-  (swap! clock inc)
-
-  @clock)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; local = from me, the client
-;; remote = from the remote host
-
-(def conn-state-table
-
-  {:listen {:none :is-listening }
-
-   :connect  {:none :is-connecting
-              :has-disconnected :is-connecting }
-
-   :local-message {:has-connected :handling-local-msg }
-
-   :remote-message {:has-connected :handling-remote-msg }
-
-   :done    {:handling-local-msg :has-connected
-             :handling-remote-msg :has-connected
-             :is-connecting :has-connected
-             :is-disconnecting :has-disconnected
-             :has-disconnected :none }
-
-   :disconnect {:is-connecting :is-disconnecting
-                :has-connected :is-disconnecting }
-
-   :remote-socket-error {:is-connecting :is-disconnecting
-                         :has-connected :is-disconnecting }
-
-   :remote-socket-closed {:is-connecting :is-disconnecting
-                          :has-connected :is-disconnecting }
-
-   :connection-error {:is-connecting :is-disconnecting
-                      :has-connected :is-disconnecting } })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -88,15 +48,17 @@
     (fsm/event! this :done {} )))
 
 (defmethod new-state :handling-remote-msg
-  [{:keys [com-chan] :as this} ev payload]
+  [{:keys [com-chan ui-chan] :as this} _ _]
   (do
+    (put! ui-chan payload)
     (put! com-chan payload) 
     (fsm/event! this :done {} )))
 
 (defmethod new-state :is-disconnecting
-  [{:keys [config kill-chan] :as this} ev payload]
-  (put! kill-chan {:kill-msg "is-disconnecting"})
-  (fsm/event! this :done {} ))
+  [{:keys [kill-chan] :as this} _ _]
+  (do
+    (put! kill-chan {:kill-msg "is-disconnecting"})
+    (fsm/event! this :done {} ) ))
 
 (defmethod new-state :is-connecting
   [{:keys [ws-atom com-chan kill-chan] :as this} ev {:keys [url] :as payload}]
@@ -158,13 +120,13 @@
                :kill-chan (chan)
                :ws-atom (atom nil))
 
-        (add-fsm :fsm conn-state-table new-state))))
+        (add-connection-fsm :fsm new-state))))
 
   (stop [this]
     (when started?
       (t/info "stoping connection")
       (put! kill-chan {:kill-msg "stopped"})
-      (remove-fsm this :fsm))
+      (remove-connection-fsm this :fsm))
        
     (assoc this :started? nil
                 :kill-chan nil

@@ -13,8 +13,7 @@
     [servalan.fsm :as fsm]
     [com.stuartsierra.component :as c]))
 
-(comment
-  (def fsm-table
+(def fsm-table
     {:connect  {:none :is-connecting
                 :has-disconnected :is-connecting }
 
@@ -39,6 +38,8 @@
 
      :connection-error {:is-connecting :is-disconnecting
                         :has-connected :is-disconnecting } })
+(comment
+  
 
 
   (defmulti handler (fn [_ ev _] (:state ev)))
