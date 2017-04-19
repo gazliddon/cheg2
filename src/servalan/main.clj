@@ -1,17 +1,17 @@
 (ns servalan.main
-  (:require 
+  (:require
     [servalan.component.pinger :refer [mk-pinger] ]
     [taoensso.timbre :as t ]
     [taoensso.timbre.appenders.core :as appenders]
 
-    [figwheel-sidecar.repl-api :as f]  
+    [figwheel-sidecar.repl-api :as f]
     [servalan.servercomp :refer [server-component connections-component]]
     [servalan.macros :refer [dochan chandler]]
-    [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
+    [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]
     [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
     [org.httpkit.server :refer [run-server]]
-    [com.stuartsierra.component :refer [start-system stop-system]:as component] 
+    [com.stuartsierra.component :refer [start-system stop-system]:as component]
     [clojure.pprint :as pp])
   (:gen-class))
 
@@ -55,14 +55,12 @@
   component/Lifecycle
 
   (start [c]
-    c) 
+    c)
 
   (stop [c]
     c))
 
 (def config {:port 6502})
-
-
 
 (defn mk-system [{:keys [port ] :as config}]
 
@@ -78,8 +76,8 @@
               (mk-pinger)
               [:connections])
 
-    :connections (component/using 
-                   (connections-component) 
+    :connections (component/using
+                   (connections-component)
                    [:config])
 
     :server (component/using
@@ -90,6 +88,3 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-

@@ -10,10 +10,10 @@
                                    close! go-loop alts!
                                    sliding-buffer timeout]]
        :cljs
-       [cljs.core.async :as a :refer [chan 
-                                put!
-                                close! <! >!
-                                alts! sliding-buffer timeout]])
+       [cljs.core.async :as a :refer [chan
+                                      put!
+                                      close! <! >!
+                                      alts! sliding-buffer timeout]])
 
     #?(:clj
        [clojure.core.async.impl.protocols :as p]
@@ -35,7 +35,7 @@
   (if chan-keys
     (->
       (fn [res k]
-        (if-let [ ch (get res k)] 
+        (if-let [ ch (get res k)]
           (do
             (a/close! ch)
             (dissoc res k))
@@ -85,16 +85,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (defn create-connection-process [event! com-chan kill-chan ws-channel]
-
   (let [connection (atom {:ws-channel ws-channel
                           :kill-chan kill-chan })]
     (go
       ;; Hunky dory
       (do
-        (event! :done {}) 
-
+        (event! :done {})
         ;; Kill channel - send anything to this an all will close
 
         (go
@@ -108,7 +105,7 @@
           (if-let [msg (<! com-chan)]
 
             (do ;; yes
-                (event! :local-message msg) 
+                (event! :local-message msg)
                 (recur))
 
             (do ;; no
@@ -129,6 +126,6 @@
                   (recur)))
 
             (do  ;; nil from ws-channel
-                (event! :remote-socket-closed {})         
+                (event! :remote-socket-closed {})
                 (>! kill-chan :remote-socket-closed))))))))
 

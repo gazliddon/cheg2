@@ -1,7 +1,5 @@
 (ns client.client
-  (:require 
-
-
+  (:require
     [clojure.spec :as s ]
     [clojure.spec.test :as st ]
 
@@ -19,7 +17,7 @@
       :refer-macros [log  trace  debug  info  warn  error  fatal  report
                      logf tracef debugf infof warnf errorf fatalf reportf
                      spy get-env]]
-    
+
 
     [shared.messages :refer [mk-msg]]
     [clojure.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
@@ -29,7 +27,7 @@
     [com.stuartsierra.component :as c]
     [chord.client :as wsockets  ])
 
-  (:require-macros 
+  (:require-macros
     [cljs.spec.test :as st ]
     [client.macros :as m :refer [dochan chandler]]
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -49,7 +47,7 @@
   [{:keys [com-chan ui-chan] :as this} _ payload]
   (do
     (put! ui-chan (mk-msg :log payload 0))
-    (put! com-chan payload) 
+    (put! com-chan payload)
     (fsm/event! this :done {} )))
 
 (defmethod new-state :is-disconnecting
@@ -111,7 +109,7 @@
     (let [this (c/stop this)]
       (->
         this
-        (assoc :started? true 
+        (assoc :started? true
                :kill-chan (chan)
                :ws-atom (atom nil))
 
@@ -122,7 +120,7 @@
       (t/info "stoping connection")
       (put! kill-chan {:kill-msg "stopped"})
       (remove-connection-fsm this :fsm))
-       
+
     (assoc this :started? nil
                 :kill-chan nil
                 :ws-atom nil)))
@@ -131,6 +129,4 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
