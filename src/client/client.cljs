@@ -48,7 +48,7 @@
 (defmethod new-state :handling-remote-msg
   [{:keys [com-chan ui-chan] :as this} _ payload]
   (do
-    (put! ui-chan payload)
+    (put! ui-chan (mk-msg :log payload 0))
     (put! com-chan payload) 
     (fsm/event! this :done {} )))
 

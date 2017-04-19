@@ -211,9 +211,7 @@
           :game-started (set-ui-game-state! :running)
           :game-stopped (set-ui-game-state! :stopped)
           :log (do
-                 (println "logging!")
                  (om/transact! reconciler `[(game/log ~msg)]))
-
           
           :default))
 
