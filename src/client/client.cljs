@@ -36,9 +36,7 @@
 
 (enable-console-print!)
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defmulti new-state (fn [_ ev _] (:state ev)))
 
 (defmethod new-state :handling-local-msg
@@ -48,7 +46,7 @@
     (fsm/event! this :done {} )))
 
 (defmethod new-state :handling-remote-msg
-  [{:keys [com-chan ui-chan] :as this} _ _]
+  [{:keys [com-chan ui-chan] :as this} _ payload]
   (do
     (put! ui-chan payload)
     (put! com-chan payload) 
@@ -73,8 +71,7 @@
         ;; hunky dory
         (do
           (reset! ws-atom ws-channel)
-          (create-connection-process event! com-chan kill-chan ws-channel))
-        ))))
+          (create-connection-process event! com-chan kill-chan ws-channel))))))
 
 (defmethod new-state :has-disconnected
   [this _ _]
@@ -92,9 +89,7 @@
 (defrecord ClientComponent [started? ui-chan com-chan config fsm kill-chan ws-atom] 
 
   fsm/IStateMachine
-
-  (get-state [this ] (fsm/get-state @fsm))
-
+  (get-state [this] (fsm/get-state @fsm))
   (event! [this ev payload] (fsm/event! @fsm ev payload))
 
   client/IClientConnection
@@ -133,14 +128,6 @@
                 :ws-atom nil)))
 
 (defn mk-client-component [config] (map->ClientComponent {:config config }))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn chan? [c]
-  (= (type c) cljs.core.async.impl.channels/ManyToManyChannel))
-
-(defn atom? [c]
-  (= (type c) cljs.core/Atom))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

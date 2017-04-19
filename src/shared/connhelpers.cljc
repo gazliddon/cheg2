@@ -84,6 +84,8 @@
   (su/remove-fsm this key))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 (defn create-connection-process [event! com-chan kill-chan ws-channel]
 
   (let [connection (atom {:ws-channel ws-channel
