@@ -15,7 +15,6 @@
     [clojure.pprint :as pp])
   (:gen-class))
 
-
 (defn to-secs [t]
   (double (/ t 1000000000)))
 
@@ -42,10 +41,12 @@
 
 
 (defn init-logging []
-  (t/merge-config!
-    {:appenders {:println nil
-                 :spit (appenders/spit-appender {:fname "/Users/garyliddon/development/cheg2/servalan.log"})}})
-  (t/info "Booting servalan") )
+  (let [cdir (System/getProperty "user.dir") ]
+
+    (t/merge-config!
+      {:appenders {:println nil
+                   :spit (appenders/spit-appender {:fname (str cdir "/" "servalan.log" )})}})
+    (t/info "Booting servalan")))
 
 (defn -main [& args]
   (init-logging))
@@ -53,7 +54,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defrecord App []
   component/Lifecycle
-
   (start [c]
     c)
 

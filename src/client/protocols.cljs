@@ -18,8 +18,5 @@
   (events-ch [this]))
 
 (defprotocol ILog
-  (log [this m ])
-  
-  )
-
+  (log [this m ]))
 

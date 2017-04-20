@@ -8,7 +8,7 @@
     #?(:clj
        [clojure.core.async :as a :refer [chan <! >! put!
                                    close! go-loop alts!
-                                   sliding-buffer timeout]]
+                                   sliding-buffer timeout go]]
        :cljs
        [cljs.core.async :as a :refer [chan
                                       put!
@@ -76,6 +76,19 @@
 
    :connection-error {:is-connecting :is-disconnecting
                       :has-connected :is-disconnecting } })
+
+(def connected-states
+  #{:is-connecting
+    :has-connected
+    :handling-local-msg
+    :handling-remote-msg })
+
+(defn is-connected? [state]
+  (contains? connected-states state))
+
+(defn not-connected? [state]
+  (not (is-connected? state)))
+
 
 (defn add-connection-fsm [this key handler]
   (su/add-fsm this key conn-state-table handler))

@@ -1,6 +1,7 @@
 (ns servalan.component.connection
   (:require
     [servalan.fsm :as fsm]
+    [clj-uuid :as uuid]
 
     [shared.protocols.clientconnection :as client]
 
@@ -60,10 +61,9 @@
   (t/error "ev      -> " ev)
   (t/error "payload -> " payload))
 
-(defrecord Connection [fsm req ws-channel kill-chan com-chan]
+(defrecord Connection [fsm req ws-channel kill-chan com-chan id]
 
   client/IClientConnection
-
   (connect! [this] (fsm/event! this :connect {}))
   (disconnect! [this] (fsm/event! this :disconnect {}))
   (state? [this] (fsm/get-state this))
@@ -88,8 +88,12 @@
       (client/disconnect!)
       (remove-connection-fsm this :fsm))))
 
+(defn keyword-uuid []
+  (keyword (str "player-id-" (uuid/v4)) ))
+
 (defn mk-connection [req com-chan]
-  (map->Connection {:kill-chan (chan)
+  (map->Connection {:id (keyword-uuid)
+                    :kill-chan (chan)
                     :com-chan com-chan
                     :ws-channel (:ws-channel req)
                     :req req }))
