@@ -1,5 +1,5 @@
 (ns servalan.servercomp
-  (:require 
+  (:require
     [taoensso.timbre :as t ]
 
     [servalan.fsm :as fsm]
@@ -11,11 +11,11 @@
 
     [servalan.connection :as c]
 
-    [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]  
+    [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
 
     [org.httpkit.server :refer [run-server]]
-    [com.stuartsierra.component :refer [start stop start-system stop-system]:as component] 
+    [com.stuartsierra.component :refer [start stop start-system stop-system]:as component]
     [clojure.pprint :as pp])
   )
 
@@ -84,17 +84,13 @@
 
 (defn is-dead? [c]
   (not (is-alive? c)))
- 
+
 (defn- has-connection? [connections id]
   (get connections id nil))
 
 ;;;;;;;;;;
 
-
-
-
 (defrecord Connections [connections-atom]
-
   component/Lifecycle
 
   (start [this]
@@ -107,7 +103,7 @@
     (when connections-atom
       (t/info "stopping connections component")
       (IConns/close-all! this))
-    
+
       (assoc this :connections-atom nil)  )
 
   IConns/IConnections
@@ -125,7 +121,6 @@
 
   (add! [this conn]
     (do
-
       (IConns/clean-up! this)
 
       (let [id (:id conn)
@@ -134,7 +129,6 @@
                       (has-connection? @connections-atom))]
 
         (when-not has-con
-
           (swap! connections-atom assoc (:id conn) conn)
           (IConn/command! conn (mk-msg :hello-from-server {:id id } 0) ))
 
@@ -155,7 +149,7 @@
     (call-connections! @connections-atom IConn/command! msg))
 
   (close-all! [this]
-    (do 
+    (do
       (call-connections! @connections-atom IConn/close!)
       (IConns/clean-up! this)
       nil)))
@@ -175,11 +169,8 @@
     (if-not server-inst
       (let [handler (fn [req]
                       (let [conn (c/mk-connection-process req)]
-                        (IConns/add! connections conn)
-                        )) ]
-
+                        (IConns/add! connections conn))) ]
         (t/info "starting server component")
-
         (assoc this
                :state :running
                :server-inst (run-server (-> handler wrap-websocket-handler) {:port (:port config)})) )

@@ -20,11 +20,10 @@
 
 (defmulti handler (fn [_ ev _] (:state ev)))
 
-(defmethod handler :default [this ev payload]
+(defmulti handler :default [this ev payload]
   )
 
-(defrecord Connection [fsm]
-
+(defrecord Connection [fsm req]
   fsm/IStateMachine
   (get-state [this ] (fsm/get-state @fsm))
   (event! [this ev payload] (fsm/event! @fsm ev payload))
@@ -40,5 +39,4 @@
     (->
       this
       (remove-connection-fsm this :fsm))))
-
 
