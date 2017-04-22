@@ -1,7 +1,8 @@
 (ns client.core
   (:require
+    [client.audio :as AU]
     [client.game :as game]
-
+    [cljs.analyzer :as ana]
     [taoensso.timbre :as t
       :refer-macros [log  trace  debug  info  warn  error  fatal  report
                      logf tracef debugf infof warnf errorf fatalf reportf
@@ -17,8 +18,8 @@
     [shared.messages :refer [mk-msg]]
     [shared.utils :as su]
 
-    [servalan.fsm :as fsm]
-    [client.protocols :as p] 
+    [shared.fsm :as fsm]
+    [client.protocols :as p]
     [client.html :refer [mk-html-component mk-html-events-component]]
     [client.utils :refer [ch->coll cos cos01] :as u]
 
@@ -26,18 +27,15 @@
 
     [goog.dom :as gdom]
     [om.next :as om :refer-macros [defui]]
-    [om.dom :as dom] 
 
-    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
-    
-    )
+    [om.dom :as dom]
+    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
 
-  (:require-macros 
-    [servalan.macros :as m :refer [dochan]]
+  (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
-(declare start stop)
+(declare start stop restart)
 
 
 (def config { :conn-config {:url  "ws://localhost:6502"
@@ -47,49 +45,49 @@
 (defn mk-bidi-chan []
   (let [reader (chan)
         writer (chan) ]
+    (do
+      (go-loop
+        []
+        (when-let [m (<! writer)]
+          (>! writer m)))
 
-    (go-loop
-      [ ]
-      (if-let [m (<! writer)]
-        (do
-          (>! reader m)
-          (recur))))
-    
-    (su/bidi-ch
-      reader
-      writer)))
+      (su/bidi-ch reader writer))))
 
 (defn mk-game [config ui-chan ]
 
-  (c/system-map
+  (let [com-rx (chan)
+        com-tx (chan)
+        com-chan (su/bidi-ch com-tx com-tx) ]
 
+    (c/system-map
+      :com-chan com-chan
 
-    :com-chan (mk-bidi-chan)
+      :config config
 
-    :config config
+      :system (mk-html-component (:html-id config))
 
-    :system (mk-html-component (:html-id config))
+      :events (mk-html-events-component)
 
-    :events (mk-html-events-component)
+      :ui-chan ui-chan
 
-    :ui-chan ui-chan
+      :client-connection (c/using
+                           ( mk-client-component (:conn-config config) )
+                           [:com-chan
+                            :ui-chan])
 
-    :client-connection (c/using
-                         ( mk-client-component (:conn-config config) )
-                         [:com-chan
-                          :ui-chan])
-
-    :game (c/using 
-            (game/mk-game)
-            [:com-chan
-             :ui-chan
-             :client-connection
-             :events
-             :system
-             :config])
+      :game (c/using 
+              (game/mk-game)
+              [:com-chan
+               :ui-chan
+               :client-connection
+               :events
+               :system
+               :config])
+      )  
     )
-  )
 
+
+  )
 
 (defonce sys-atom (atom nil))
 
@@ -158,8 +156,6 @@
 
 
 
-
-
 (defui App
 
   static om/IQuery
@@ -182,9 +178,123 @@
                (case game-state
                  :stopped (mk-button this "Start" start)
                  :running (mk-button this "Stop" stop)
-                 :connecting (mk-button this "Connecting" identity)
+                 :connecting (mk-button this "Connecting" restart)
                  (mk-button this "" identity)) ]
               ))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defn decode-audio-data
+  [context data]
+  (let [ch (chan)]
+    (.decodeAudioData context
+                      data
+                      (fn [buffer]
+                        (go (>! ch buffer)
+                            (close! ch))))
+    ch))
+
+(defonce cache (atom {}))
+
+(defn get-audio [url]
+  (let [ch (chan)]
+    (doto (goog.net.XhrIo.)
+      (.setResponseType "arraybuffer")
+      (.addEventListener goog.net.EventType.COMPLETE
+                         (fn [event]
+                           (let [res (-> event .-target .getResponse)]
+                             (go (>! ch res)
+                                 (close! ch)))))
+      (.send url "GET"))
+    ch))
+
+
+(defonce AudioContext (or (.-AudioContext js/window)
+                          (.-webkitAudioContext js/window)))
+
+(defonce context (AudioContext.))
+
+(defonce cache (atom {}))
+
+(defn load-audio-buffer-async
+  [url]
+  (if-let [dat (get @cache url)]
+    (go
+      dat)
+    (go
+      (let [response (<! (get-audio url))
+            buffer (<! (decode-audio-data context response)) ]
+        (do
+          (swap! cache assoc url buffer)
+          buffer)))))
+
+(defn make-audio-source [buffer]
+  (doto (.createBufferSource context)
+    (aset "buffer" buffer)) )
+
+(defn connect
+  ([a b]
+   (do
+     (.connect a b)
+     b))
+  ([a]
+   (connect a (.-destination context))))
+
+(defprotocol ISound
+  (play-sound [_])
+  (stop-sound [_])
+  (set-volume [_ _])
+  (fade-out [_ _]))
+
+(defrecord Sound [buffer vol source-atom gain-node]
+  ISound
+
+  (play-sound [this]
+    (let [ source (make-audio-source buffer) ]
+      (do
+        (stop-sound this)
+        (->
+          (connect source gain-node)
+          (connect))
+        ; (set! (.-loop source) true)
+        (set! (.-onended source )
+              (fn []
+                ))
+        (.start source)
+        (reset! source-atom source)
+        )))
+
+  (stop-sound [this]
+    (when @source-atom
+      (.stop @source-atom)
+      (reset! source-atom nil)))
+
+  (set-volume [this v]
+    (set! (-> gain-node .-gain .-value) v))
+
+  (fade-out [this t]
+
+    ))
+
+(defn mk-sound [url]
+  (let [gain-node (.createGain context)
+        buff-chan (load-audio-buffer-async url) ]
+    (go
+      (map->Sound {:buffer (<! buff-chan)
+                   :source-atom (atom nil)
+                   :gain-node gain-node
+                   :vol gain-node }))))
+
+(def xx (mk-sound "audio/ping.wav"))
+
+(comment
+ (go
+  (def yy (<! xx))
+  (play-sound yy)
+  ))
+
+
 
 
 
@@ -202,22 +312,19 @@
   (set-ui-field! :game-state v))
 
 (defn mk-ui-listener [ch]
-  (go-loop
-    []
+  (go-loop []
     (when-let [msg (<! ch)]
-      (do
-        (case (:type msg)
-          :game-connecting (set-ui-game-state! :connecting)
-          :game-started (set-ui-game-state! :running)
-          :game-stopped (set-ui-game-state! :stopped)
-          :log (do
-                 (om/transact! reconciler `[(game/log ~msg)]))
-          
-          :default))
-
-      (recur) )
-
-    (t/error "ui-chan is dead! FIX THIS")) )
+      (case (:type msg)
+            :game-connecting (set-ui-game-state! :connecting)
+            :game-started (set-ui-game-state! :running)
+            :game-stopped (set-ui-game-state! :stopped)
+            :log (do
+                   (om/transact! reconciler `[(game/log ~msg)]))
+            :default)
+      (recur)
+      )
+    )
+  )
 
 (def ui-chan (chan))
 
@@ -248,6 +355,9 @@
       (reset! sys-atom ))  
     
     (-> @sys-atom :client-connection client/connect!)))
+
+(defn restart []
+  (start))
 
 (stop)
 (main)

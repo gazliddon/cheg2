@@ -1,7 +1,9 @@
 (ns client.game
 
   (:require
-    [servalan.fsm :as fsm]
+    [goog.dom :as gdom]
+    [shared.fsm :as fsm :refer [add-fsm remove-fsm]]
+  
     [client.sprdata :as sprdata]
 
     [taoensso.timbre :as t
@@ -13,7 +15,7 @@
 
     [shared.messages :refer [mk-msg]]
 
-    [shared.utils :refer [add-fsm remove-fsm] :as su]
+    [shared.utils :as su]
 
     [client.protocols :as p] 
 
@@ -24,6 +26,9 @@
   (:require-macros 
     [servalan.macros :as m :refer [dochan]]
     [cljs.core.async.macros :refer [go go-loop]]))
+
+
+
 
 (def player (atom {:pos [10 10]}))
 
@@ -90,7 +95,6 @@
 (def objs (atom []))
 
 
-
 (defn print-waiting! [renderer t]
   (let [red (* 255 (cos01 (*  t 10)))
         col [red 0 255]
@@ -125,20 +129,17 @@
   (on-update [_ t])
   (on-message [_ msg] ))
 
-(def game-state-table
-  {
-   :hello-from-server {:none :starting-game}
-   :game-state {:running-game :getting-state}
+(def game-state-table {:hello-from-server {:none :starting-game}
+                       :game-state {:running-game :getting-state}
 
-   :send-to-server {:running-game :sending-to-server}
+                       :send-to-server {:running-game :sending-to-server}
 
-   :done {:getting-state :running-game
-          :sending-to-server :running-game
-          :starting-game :running-game
-          :stopping-game :none }
+                       :done {:getting-state :running-game
+                              :sending-to-server :running-game
+                              :starting-game :running-game
+                              :stopping-game :none }
 
-   :quit {:running-game :stopping-game}
-   })
+                       :quit {:running-game :stopping-game} })
 
 (defmulti game-state (fn [this ev payload] (:state ev)))
 
@@ -149,14 +150,12 @@
   [{:keys [state ui-chan] :as this} ev payload]
 
   (put! ui-chan (mk-msg :game-started {} 0))
-
   (t/info "starting game")
   (swap! state assoc :id 1)
   (fsm/event! this :done {}))
 
 (defmethod game-state :running-game
   [{:keys [state] :as this} ev payload]
-  ; (t/info "running game")
   )
 
 (defmethod game-state :stopping-game
@@ -176,7 +175,8 @@
       (t/info "listening for input from com-chan")
 
       (go-loop
-        [] (if-let [msg (<! com-chan) ]
+        []
+        (if-let [msg (<! com-chan) ]
              (do
                (t/info "game handling com-chan msg " msg)
                (on-network this msg)
@@ -229,7 +229,7 @@
   IGame
 
   (on-network [this msg]
-    (t/info "on-network" msg)
+    (t/info "on-network!" msg)
     (t/info "player is " @state)
     (fsm/event! this (:type msg) (:payload msg)))
 

@@ -1,9 +1,9 @@
 (ns shared.connhelpers
   (:require
-    [servalan.fsm :as fsm]
-    [shared.utils :as su]
+    [shared.fsm :as FSM2]
 
-    #?(:clj [org.httpkit.server :as http])
+    [taoensso.timbre :as t
+     :refer-macros [log  debug  info  warn  error  fatal  report ]]
 
     #?(:clj
        [clojure.core.async :as a :refer [chan <! >! put!
@@ -25,12 +25,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn close-chans!
-  "close any of the chans in the vec of chah-keys
+  "close any of the chans1in the vec of chah-keys
   return a hash with closed channels removed"
 
   [chans-hash & chan-keys]
-
-  (println (str "closing " chan-keys))
 
   (if chan-keys
     (->
@@ -69,10 +67,12 @@
                 :has-connected :is-disconnecting }
 
    :remote-socket-error {:is-connecting :is-disconnecting
-                         :has-connected :is-disconnecting }
+                         :has-connected :is-disconnecting
+                         :handling-local-msg :is-disconnecting }
 
    :remote-socket-closed {:is-connecting :is-disconnecting
-                          :has-connected :is-disconnecting }
+                          :has-connected :is-disconnecting
+                          :handling-local-msg :is-disconnecting }
 
    :connection-error {:is-connecting :is-disconnecting
                       :has-connected :is-disconnecting } })
@@ -83,18 +83,22 @@
     :handling-local-msg
     :handling-remote-msg })
 
+(contains? connected-states :has-connected)
+
 (defn is-connected? [state]
   (contains? connected-states state))
 
 (defn not-connected? [state]
   (not (is-connected? state)))
 
+(not-connected? :has-connected)
 
 (defn add-connection-fsm [this key handler]
-  (su/add-fsm this key conn-state-table handler))
+  ; (t/info (class this))
+  (FSM2/add-fsm this key conn-state-table handler))
 
 (defn remove-connection-fsm [this key]
-  (su/remove-fsm this key))
+  (FSM2/remove-fsm this key))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -109,6 +113,7 @@
 
         (go
           (when-let [msg (<! kill-chan)]
+            (println (str "*********killing it! " msg) )
             (event! :kill-chan msg)
             (swap! connection close-all-chans!)))
 
@@ -118,6 +123,7 @@
           (if-let [msg (<! com-chan)]
 
             (do ;; yes
+                (t/info "**** LOCAL MESSAGE" msg)
                 (event! :local-message msg)
                 (recur))
 

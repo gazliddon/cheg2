@@ -1,20 +1,13 @@
 
 (ns servalan.component.clock
-  (:require 
-    [servalan.macros :as m]
+  (:require
 
-    [servalan.protocols.connections :as IConns]
+    [clojure.core.async :refer [>!!] :as a]
 
-    [clojure.core.async :refer [<!! >!! <! >! put! close! go go-loop chan alts!] :as a]  
-
-    [shared.messages :refer [mk-msg]]
-
-    [shared.utils :as u :refer [bidi-ch every-n-millis-ch]]
+    [shared.utils :as u :refer [every-n-millis-ch]]
 
     [taoensso.timbre :as t ]
-    [taoensso.timbre.appenders.core :as appenders]
-    [com.stuartsierra.component :refer [start-system stop-system]:as component] 
-    [clojure.pprint :as pp :refer [pprint]])
+    [com.stuartsierra.component :refer [start-system stop-system]:as component] )
   )
 
 
@@ -22,27 +15,25 @@
   (get-time [_]
             ))
 
-(defrecord Clock []
+
+(defn get-sys-time-millis []
+  (double (/ (System/nanoTime) 1000000)))
+
+(defrecord Clock [base-time]
 
   component/Lifecycle
-
   (start [this]
-    (let [this (-> this
-                   (component/stop ))]
-      (do
-        this)))
+      (->
+        this
+        (component/stop)
+        (assoc :base-time (get-sys-time-millis))))
 
   (stop [this]
-    (comment do
-      (when timer-chan
-        (>!! timer-chan :dead))  
-      (assoc this :timer-chan nil))
-    )
+    (assoc this :base-time nil))
 
   IClock
   (get-time [this]
-    )
-  )
+    (- (get-sys-time-millis) base-time )))
 
 (defn mk-clock []
   (map->Clock {}))

@@ -1,34 +1,28 @@
 (ns client.client
   (:require
-    [clojure.spec :as s ]
-    [clojure.spec.test :as st ]
-
     [shared.connhelpers :refer [create-connection-process
                                 add-connection-fsm
-                                remove-connection-fsm
-                                ] :as ch]
+                                remove-connection-fsm ]]
 
-    [shared.utils :refer [add-fsm
-                          remove-fsm ] :as su]
+    [shared.messages :refer [mk-msg]]
+    [shared.fsm :refer [add-fsm
+                        remove-fsm ]]
 
     [client.utils :as cu]
 
     [taoensso.timbre :as t
-      :refer-macros [log  trace  debug  info  warn  error  fatal  report
-                     logf tracef debugf infof warnf errorf fatalf reportf
-                     spy get-env]]
+     :refer-macros [log  trace  debug  info  warn  error  fatal  report ]]
 
 
-    [shared.messages :refer [mk-msg]]
     [clojure.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
     [client.html :as html]
-    [servalan.fsm :as fsm]
+    [shared.fsm :as fsm]
     [shared.protocols.clientconnection :as client]
     [com.stuartsierra.component :as c]
     [chord.client :as wsockets  ])
 
   (:require-macros
-    [cljs.spec.test :as st ]
+    ; [cljs.spec.test :as st ]
     [client.macros :as m :refer [dochan chandler]]
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -40,12 +34,15 @@
 (defmethod new-state :handling-local-msg
   [{:keys [ws-atom] :as this} ev payload]
   (do
-    (put! @ws-atom payload)
-    (fsm/event! this :done {} )))
+    (t/info "handling local msg " payload)
+    (if (put! @ws-atom payload)
+      (fsm/event! this :done {} )  
+      (fsm/event! this :remote-socket-closed {} ))))
 
 (defmethod new-state :handling-remote-msg
   [{:keys [com-chan ui-chan] :as this} _ payload]
   (do
+    (t/info "handling remote-msg " payload)
     (put! ui-chan (mk-msg :log payload 0))
     (put! com-chan payload)
     (fsm/event! this :done {} )))
@@ -75,7 +72,10 @@
   [this _ _]
   (fsm/event! this :done {}))
 
-(defmethod new-state :none [this ev payload])
+(defmethod new-state :none [this ev payload]
+  
+  )
+
 (defmethod new-state :has-connected [this ev payload])
 
 (defmethod new-state :default [{:keys [config] :as this} ev payload]
@@ -84,7 +84,8 @@
   (t/error "payload -> " payload))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord ClientComponent [started? ui-chan com-chan config fsm kill-chan ws-atom] 
+(defrecord ClientComponent [ui-chan com-chan
+                            started? config fsm kill-chan ws-atom] 
 
   fsm/IStateMachine
   (get-state [this] (fsm/get-state @fsm))
