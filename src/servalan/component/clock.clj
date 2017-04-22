@@ -1,20 +1,13 @@
 
 (ns servalan.component.clock
   (:require 
-    [servalan.macros :as m]
 
-    [servalan.protocols.connections :as IConns]
-
-    [clojure.core.async :refer [<!! >!! <! >! put! close! go go-loop chan alts!] :as a]  
-
-    [shared.messages :refer [mk-msg]]
+    [clojure.core.async :refer [>!!] :as a]  
 
     [shared.utils :as u :refer [bidi-ch every-n-millis-ch]]
 
     [taoensso.timbre :as t ]
-    [taoensso.timbre.appenders.core :as appenders]
-    [com.stuartsierra.component :refer [start-system stop-system]:as component] 
-    [clojure.pprint :as pp :refer [pprint]])
+    [com.stuartsierra.component :refer [start-system stop-system]:as component] )
   )
 
 

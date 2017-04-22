@@ -1,8 +1,6 @@
-(ns servalan.fsm
+(ns shared.fsm
   (:require
-    [clojure.pprint :as pp :refer [pprint]] 
-    )
-  )
+    [taoensso.timbre :as t ]))
 
 ;; Hey it's a state machine!
 
@@ -35,23 +33,34 @@
 
   (get-state [this] @state))
 
-
 (defn mk-state-machine
   
   ([table dispatcher]
-   (->StateMachine table (atom :none) dispatcher))
-
-  ([table]
-   (mk-state-machine table (fn [a b] nil))))
+   (->StateMachine table (atom :none) dispatcher)))
 
 (defn get-states
   "get a sequence of unique states in this state table"
   [st]
   (->>
-    st
+   st
     (vals)
     (mapcat #(into [] %))
     (flatten)
     (distinct)))
-
  
+(defn add-fsm [this fsm-key table dispatcher ]
+  (let [fsm-atom (atom nil) ]
+    (when-not (satisfies? IStateMachine this)
+      (t/error (type this) " does not satisfy IStateMachine")
+      (assert false))
+
+    (let [new-this (assoc this fsm-key fsm-atom) ]
+      (do
+        (reset! fsm-atom (mk-state-machine
+                           table
+                           (fn [ev payload]
+                             (dispatcher new-this ev payload))))
+        new-this))))
+
+(defn remove-fsm [this fsm-key]
+  (assoc this fsm-key nil))

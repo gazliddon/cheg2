@@ -2,27 +2,23 @@
   (:require
     [clojure.spec :as s ]
     [clojure.spec.test :as st ]
-
     [shared.connhelpers :refer [create-connection-process
                                 add-connection-fsm
-                                remove-connection-fsm
-                                ] :as ch]
+                                remove-connection-fsm ]]
 
-    [shared.utils :refer [add-fsm
-                          remove-fsm ] :as su]
+    [shared.messages :refer [mk-msg]]
+    [shared.fsm :refer [add-fsm
+                        remove-fsm ]]
 
     [client.utils :as cu]
 
     [taoensso.timbre :as t
-      :refer-macros [log  trace  debug  info  warn  error  fatal  report
-                     logf tracef debugf infof warnf errorf fatalf reportf
-                     spy get-env]]
+     :refer-macros [log  trace  debug  info  warn  error  fatal  report ]]
 
 
-    [shared.messages :refer [mk-msg]]
     [clojure.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
     [client.html :as html]
-    [servalan.fsm :as fsm]
+    [shared.fsm :as fsm]
     [shared.protocols.clientconnection :as client]
     [com.stuartsierra.component :as c]
     [chord.client :as wsockets  ])

@@ -1,8 +1,7 @@
 (ns shared.mapper
   )
 
-
-(defprotocol IMap
+(defprotocol IGazMap
   (clear [_ v])
   (box [_ xy wh v])
   (hline [_ xy l v])
@@ -43,7 +42,7 @@
     [ xx yy ]))
 
 (defrecord Map [wh blocks]
-  IMap
+  IGazMap
   (clear [this value]
     (box this [0 0] wh value))
 
@@ -63,12 +62,12 @@
       this))
 
   (put-block [this xy v]
-    (if (in-bounds? this xy)
+    (if (in-bounds? wh xy )
       (assoc this :blocks (assoc blocks (get-index this xy) v))
       this))
 
   (get-block [this xy v]
-    (when (in-bounds? xy)
+    (when (in-bounds? wh xy )
       (nth blocks (get-index this xy)))))
 
 (defn mk-map [wh v]

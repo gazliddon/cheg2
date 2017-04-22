@@ -1,28 +1,33 @@
-(ns servalan.servercomp
+(ns servalan.component.connections
   (:require
     [taoensso.timbre :as t ]
 
-    [servalan.fsm :as fsm]
+    [shared.fsm :as fsm]
 
     [shared.messages :refer [mk-msg]]
 
     [shared.connhelpers :as ch]
 
-    [servalan.protocols.connections :as IConns]
-
     [shared.protocols.clientconnection :as client]
 
     [servalan.component.connection :as comp.connection]
 
-    [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]
+    [clojure.core.async :refer [chan <!! >!! <! >! put! go ] :as a]
 
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
 
     [org.httpkit.server :refer [run-server]]
 
-    [com.stuartsierra.component :as c]
+    [com.stuartsierra.component :as c]))
 
-    [clojure.pprint :as pp]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defprotocol IConnections
+  (clean-up! [ths])
+  (add!  [this conn])
+  (send! [this id msg])
+  (broadcast! [this msg])
+  (close! [this id])
+  (close-all! [this]))
 
 (def all-players (atom []))
 
@@ -104,10 +109,10 @@
   (stop [this]
     (when connections-atom
       (t/info "stopping connections component")
-      (IConns/close-all! this))
+      (close-all! this))
       (assoc this :connections-atom nil)  )
 
-  IConns/IConnections
+  IConnections
 
   (clean-up! [this]
     (do
@@ -121,7 +126,7 @@
 
   (add! [this conn]
     (do
-      (IConns/clean-up! this)
+      (clean-up! this)
 
       (let [id (:id conn)
             has-con (has-connection? @connections-atom conn)]
@@ -151,42 +156,9 @@
   (close-all! [this]
     (do
       (call-connections! @connections-atom client/disconnect! )
-      (IConns/clean-up! this)
+      (clean-up! this)
       nil)))
 
 (defn connections-component []
   (map->Connections {} ))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord Server [connections config server-inst]
-
-  c/Lifecycle
-
-  (start [this]
-    (if-not server-inst
-      (let [handler (fn [req]
-                      (->>
-                        (comp.connection/mk-connection req)
-                        (c/start)
-                        (IConns/add! connections)))]
-
-        (t/info "starting server component")
-        (assoc this
-               :state :running
-               :server-inst (run-server (-> handler wrap-websocket-handler) {:port (:port config)})) )
-      this))
-
-  (stop [this]
-    (if server-inst
-      (do
-        (t/info "stopping server component")
-
-        (server-inst :timeout 300)
-
-        (assoc this
-               :server-inst nil
-               :state nil))
-      this)))
-
-(defn server-component [] (map->Server {}) )
 

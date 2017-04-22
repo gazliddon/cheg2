@@ -1,7 +1,8 @@
 (ns client.game
 
   (:require
-    [servalan.fsm :as fsm]
+    [shared.fsm :as fsm :refer [add-fsm remove-fsm]]
+  
     [client.sprdata :as sprdata]
 
     [taoensso.timbre :as t
@@ -13,7 +14,7 @@
 
     [shared.messages :refer [mk-msg]]
 
-    [shared.utils :refer [add-fsm remove-fsm] :as su]
+    [shared.utils :as su]
 
     [client.protocols :as p] 
 

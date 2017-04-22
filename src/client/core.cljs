@@ -1,7 +1,8 @@
 (ns client.core
   (:require
+    [ajax.core :refer [GET POST ajax-request json-request-format json-response-format raw-response-format]]
     [client.game :as game]
-
+    [cljs.analyzer :as ana] 
     [taoensso.timbre :as t
       :refer-macros [log  trace  debug  info  warn  error  fatal  report
                      logf tracef debugf infof warnf errorf fatalf reportf
@@ -17,7 +18,7 @@
     [shared.messages :refer [mk-msg]]
     [shared.utils :as su]
 
-    [servalan.fsm :as fsm]
+    [shared.fsm :as fsm]
     [client.protocols :as p] 
     [client.html :refer [mk-html-component mk-html-events-component]]
     [client.utils :refer [ch->coll cos cos01] :as u]
@@ -26,18 +27,15 @@
 
     [goog.dom :as gdom]
     [om.next :as om :refer-macros [defui]]
-    [om.dom :as dom] 
 
-    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
-    
-    )
+    [om.dom :as dom] 
+    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
 
   (:require-macros 
-    [servalan.macros :as m :refer [dochan]]
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
-(declare start stop)
+(declare start stop restart)
 
 
 (def config { :conn-config {:url  "ws://localhost:6502"
@@ -47,17 +45,13 @@
 (defn mk-bidi-chan []
   (let [reader (chan)
         writer (chan) ]
+    (do
+      (go-loop
+        []
+        (when-let [m (<! writer)]
+          (>! writer m)))
 
-    (go-loop
-      [ ]
-      (if-let [m (<! writer)]
-        (do
-          (>! reader m)
-          (recur))))
-    
-    (su/bidi-ch
-      reader
-      writer)))
+      (su/bidi-ch reader writer))))
 
 (defn mk-game [config ui-chan ]
 
@@ -182,10 +176,20 @@
                (case game-state
                  :stopped (mk-button this "Start" start)
                  :running (mk-button this "Stop" stop)
-                 :connecting (mk-button this "Connecting" identity)
+                 :connecting (mk-button this "Connecting" restart)
                  (mk-button this "" identity)) ]
               ))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn setup-ac
+  "Initialize the audio context"
+  []
+  (let [actx (or
+               (.-AudioContext js/window) 
+               (.-webkitAudioContext js/window)
+               :none) ]
+    (set! (.-AudioContext js/window) actx)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -202,22 +206,19 @@
   (set-ui-field! :game-state v))
 
 (defn mk-ui-listener [ch]
-  (go-loop
-    []
+  (go-loop []
     (when-let [msg (<! ch)]
-      (do
-        (case (:type msg)
-          :game-connecting (set-ui-game-state! :connecting)
-          :game-started (set-ui-game-state! :running)
-          :game-stopped (set-ui-game-state! :stopped)
-          :log (do
-                 (om/transact! reconciler `[(game/log ~msg)]))
-          
-          :default))
-
-      (recur) )
-
-    (t/error "ui-chan is dead! FIX THIS")) )
+      (case (:type msg)
+            :game-connecting (set-ui-game-state! :connecting)
+            :game-started (set-ui-game-state! :running)
+            :game-stopped (set-ui-game-state! :stopped)
+            :log (do
+                   (om/transact! reconciler `[(game/log ~msg)]))
+            :default)
+      (recur)
+      )
+    )
+  )
 
 (def ui-chan (chan))
 
@@ -248,6 +249,9 @@
       (reset! sys-atom ))  
     
     (-> @sys-atom :client-connection client/connect!)))
+
+(defn restart []
+  (start))
 
 (stop)
 (main)

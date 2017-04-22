@@ -1,11 +1,15 @@
 (ns servalan.main
   (:require
+
+    [servalan.component.server :refer [server-component ]]
+    [servalan.component.connections :refer [connections-component]]
     [servalan.component.pinger :refer [mk-pinger] ]
+
     [taoensso.timbre :as t ]
     [taoensso.timbre.appenders.core :as appenders]
 
     [figwheel-sidecar.repl-api :as f]
-    [servalan.servercomp :refer [server-component connections-component]]
+
     [servalan.macros :refer [dochan chandler]]
     [clojure.core.async :refer [<!! >!! <! >! put! close! go ] :as a]
     [clj-uuid :as uuid]

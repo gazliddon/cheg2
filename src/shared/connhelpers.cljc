@@ -1,9 +1,10 @@
 (ns shared.connhelpers
   (:require
-    [servalan.fsm :as fsm]
-    [shared.utils :as su]
 
-    #?(:clj [org.httpkit.server :as http])
+    [shared.fsm :refer [add-fsm remove-fsm]]
+
+    [taoensso.timbre :as t
+     :refer-macros [log  debug  info  warn  error  fatal  report ]]
 
     #?(:clj
        [clojure.core.async :as a :refer [chan <! >! put!
@@ -25,7 +26,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn close-chans!
-  "close any of the chans in the vec of chah-keys
+  "close any of the chans1in the vec of chah-keys
   return a hash with closed channels removed"
 
   [chans-hash & chan-keys]
@@ -89,12 +90,12 @@
 (defn not-connected? [state]
   (not (is-connected? state)))
 
-
 (defn add-connection-fsm [this key handler]
-  (su/add-fsm this key conn-state-table handler))
+  ; (t/info (class this))
+  (add-fsm this key conn-state-table handler))
 
 (defn remove-connection-fsm [this key]
-  (su/remove-fsm this key))
+  (remove-fsm this key))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
