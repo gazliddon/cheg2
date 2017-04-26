@@ -2,6 +2,9 @@
   (:require 
     [servalan.macros :as m]
 
+    [servalan.component.clock :as clock]
+    [taoensso.timbre :as t ]
+
     [servalan.component.connections :as conns]
     [clojure.core.async :refer [>!! ]]
     [shared.messages :refer [mk-msg]]
@@ -17,14 +20,17 @@
   component/Lifecycle
 
   (start [this]
-    (let [timer-chan (every-n-millis-ch 1000)
+    (let [timer-chan (every-n-millis-ch 3000)
           this (-> (component/stop this)
                    (assoc :timer-chan timer-chan)) ]
       (do
-
         (m/dochan
           [msg timer-chan]
-          (conns/broadcast! connections (mk-msg :ping {} 0)))
+          (let [t (clock/get-time clock)
+                msg (mk-msg :ping {} (+ 10)) ]
+            (do
+              (t/info "broadcsting " msg)
+              (conns/broadcast! connections msg)  )))
 
         this)))
 

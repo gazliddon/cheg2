@@ -3,6 +3,7 @@
     [taoensso.timbre :as t ]
     [servalan.main :as main]
     [servalan.component.connections :as conns]
+    [servalan.component.server :as SERVER]
     [com.stuartsierra.component :as component] 
     [clojure.tools.namespace.repl :refer (refresh)]
     [figwheel-sidecar.repl-api :as f])
@@ -51,4 +52,8 @@
 (defn reset []
   (stop)
   (refresh :after 'user/go))
+
+(defn stats []
+  (let [server (-> system :server)]
+    (SERVER/stats server)))
 

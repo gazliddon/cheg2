@@ -1,19 +1,22 @@
 (ns servalan.component.connection
   (:require
     [shared.fsm :as FSM]
+
+    [shared.messages :refer [mk-msg]]
+
+    [shared.utils :as su]
+
+    [shared.connhelpers :refer [add-connection-fsm
+                                remove-connection-fsm
+                                create-connection-process ]]
+
     [clj-uuid :as uuid]
 
     [shared.protocols.clientconnection :as client]
 
     [clojure.core.async :as a :refer [<! ]]
 
-    [shared.connhelpers :refer [add-connection-fsm
-                                remove-connection-fsm
-                                create-connection-process ]]
-
     [taoensso.timbre :as t ]
-
-    [shared.messages :refer [mk-msg]]
 
     [com.stuartsierra.component :as c]))
 
@@ -22,17 +25,15 @@
 (defmethod new-state :handling-local-msg
   [{:keys [ws-channel] :as this} ev payload]
   (do
+    (t/info "got local msg " payload)
     (a/put! ws-channel payload)
     (FSM/event! this :done {} )))
 
 (defmethod new-state :handling-remote-msg
-  [{:keys [com-chan ui-chan] :as this} _ payload]
+  [{:keys [com-chan ] :as this} _ payload]
   (do
-    (when ui-chan
-      (a/put! ui-chan (mk-msg :log payload 0)))
-
+    (t/info "got remote msg " payload)
     (a/put! com-chan payload)
-
     (FSM/event! this :done {})))
 
 (defmethod new-state :is-disconnecting
@@ -46,7 +47,6 @@
   (let [ event!  (fn [ev payload] (FSM/event! this ev payload)) ]
     (do
       (create-connection-process event! com-chan kill-chan ws-channel)
-      (a/put! com-chan (mk-msg :hello-from-server {:id 1236566} 0))
       (FSM/event! this :done {}))))
 
 (defmethod new-state :has-disconnected
@@ -64,6 +64,7 @@
 (defrecord Connection [fsm req ws-channel kill-chan com-chan id]
 
   client/IClientConnection
+
   (connect! [this] (FSM/event! this :connect {}))
   (disconnect! [this] (FSM/event! this :disconnect {}))
   (state? [this] (FSM/get-state this))
@@ -96,10 +97,13 @@
 (defn keyword-uuid []
   (keyword (str "player-id-" (uuid/v4)) ))
 
-(defn mk-connection [req com-chan]
-  (map->Connection {:id (keyword-uuid)
-                    :kill-chan (a/chan)
-                    :com-chan com-chan
-                    :ws-channel (:ws-channel req)
-                    :req req }))
+(defn mk-connection [req]
+  (let [com-rx (a/chan)
+        com-tx (a/chan)
+        com-chan (su/bidi-ch com-tx com-rx)]
+    (map->Connection {:id (keyword-uuid)
+                      :kill-chan (a/chan)
+                      :com-chan com-chan
+                      :ws-channel (:ws-channel req)
+                      :req req })))
 

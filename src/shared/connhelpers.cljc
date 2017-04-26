@@ -1,7 +1,7 @@
 (ns shared.connhelpers
   (:require
 
-    [shared.fsm :refer [add-fsm remove-fsm]]
+    [shared.fsm :as FSM]
 
     [taoensso.timbre :as t
      :refer-macros [log  debug  info  warn  error  fatal  report ]]
@@ -30,8 +30,6 @@
   return a hash with closed channels removed"
 
   [chans-hash & chan-keys]
-
-  (println (str "closing " chan-keys))
 
   (if chan-keys
     (->
@@ -92,10 +90,10 @@
 
 (defn add-connection-fsm [this key handler]
   ; (t/info (class this))
-  (add-fsm this key conn-state-table handler))
+  (FSM/add-fsm this key conn-state-table handler))
 
 (defn remove-connection-fsm [this key]
-  (remove-fsm this key))
+  (FSM/remove-fsm this key))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -4,6 +4,7 @@
     [servalan.component.server :refer [server-component ]]
     [servalan.component.connections :refer [connections-component]]
     [servalan.component.pinger :refer [mk-pinger] ]
+    [servalan.component.clock :refer [mk-clock] ]
 
     [taoensso.timbre :as t ]
     [taoensso.timbre.appenders.core :as appenders]
@@ -72,17 +73,20 @@
 
   (component/system-map
 
+    :clock (mk-clock)
+
     :config config
 
     :connect-ch (a/chan)
 
     :pinger (component/using
               (mk-pinger)
-              [:connections])
+              [:clock :connections])
 
     :connections (component/using
                    (connections-component)
-                   [:config])
+                   [:config
+                    :clock ])
 
     :server (component/using
               (server-component)

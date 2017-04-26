@@ -17,7 +17,18 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defprotocol IServer
+  (stats [_]))
+
+
 (defrecord Server [connections config server-inst]
+
+  IServer
+
+  (stats [this]
+    (let [conns (-> connections :connections-atom)]
+      (println (str "there are " (count @conns) " connections"))))
 
   c/Lifecycle
 
@@ -25,7 +36,7 @@
     (if-not server-inst
       (let [handler (fn [req]
                       (->>
-                        (conn/mk-connection req (chan))
+                        (conn/mk-connection req)
                         (c/start)
                         (conns/add! connections)))]
 

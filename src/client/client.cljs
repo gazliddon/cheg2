@@ -36,12 +36,14 @@
 (defmethod new-state :handling-local-msg
   [{:keys [ws-atom] :as this} ev payload]
   (do
+    (t/info "handling local msg " payload)
     (put! @ws-atom payload)
     (fsm/event! this :done {} )))
 
 (defmethod new-state :handling-remote-msg
   [{:keys [com-chan ui-chan] :as this} _ payload]
   (do
+    (t/info "handling remote-msg " payload)
     (put! ui-chan (mk-msg :log payload 0))
     (put! com-chan payload)
     (fsm/event! this :done {} )))
@@ -61,9 +63,14 @@
 
       (if error
         ;; An error
-        (event! :connection-error {:error error})
+        (do
+          (println "an error!")
+          (event! :connection-error {:error error})
+          )
         ;; hunky dory
         (do
+
+          (println "hunky dory!")
           (reset! ws-atom ws-channel)
           (create-connection-process event! com-chan kill-chan ws-channel))))))
 
@@ -80,7 +87,8 @@
   (t/error "payload -> " payload))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord ClientComponent [started? ui-chan com-chan config fsm kill-chan ws-atom] 
+(defrecord ClientComponent [ui-chan com-chan
+                            started? config fsm kill-chan ws-atom] 
 
   fsm/IStateMachine
   (get-state [this] (fsm/get-state @fsm))

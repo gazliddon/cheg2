@@ -92,7 +92,8 @@
 (defn- has-connection? [connections id]
   (get connections id nil))
 
-(defn- send-to-connection! [{:keys [com-chan]} msg]
+(defn- send-to-connection! [{:keys [id com-chan]} msg]
+  (t/info "sending " msg " to " id)
   (put! com-chan msg))
 
 ;;;;;;;;;;

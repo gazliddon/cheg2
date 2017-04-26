@@ -132,8 +132,8 @@
 (defn animate! [cbfunc]
   (when (cbfunc)
     (.requestAnimationFrame js/window #(animate! cbfunc))))
-  
-   
+
+
 (defn mk-animator-channel
 
   "returns a bi-directional channel
@@ -163,7 +163,7 @@
       ;; refresh until we're not running any more
       (animate! (fn []
                   (when @running?
-                    (put! reader :anim) 
+                    (put! reader :anim)
                     true)))
 
       bi-chan)))
