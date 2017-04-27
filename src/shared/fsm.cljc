@@ -8,7 +8,7 @@
   (event! [this ev payload])
   (get-state [this]))
 
-(defn event->state [state-table state event]
+(defn- event->state [state-table state event]
   (let [st-entry (get state-table event nil)
         next-st (get st-entry state state) ]
     next-st))
@@ -38,7 +38,7 @@
   ([table dispatcher]
    (->StateMachine table (atom :none) dispatcher)))
 
-(defn get-states
+(defn- get-states
   "get a sequence of unique states in this state table"
   [st]
   (->>

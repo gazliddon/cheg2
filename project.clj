@@ -10,9 +10,8 @@
 
   :dependencies [[org.clojure/clojure "1.8.0"]
 
-                 [org.clojure/test.check "0.9.0"]
-
-                 [cljs-ajax "0.5.9"]
+                 ; [org.clojure/test.check "0.9.0"]
+                 ; [cljs-ajax "0.5.9"]
 
                  [org.clojure/clojurescript "1.9.229"]
 

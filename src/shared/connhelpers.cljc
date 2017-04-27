@@ -1,7 +1,6 @@
 (ns shared.connhelpers
   (:require
-
-    [shared.fsm :as FSM]
+    [shared.fsm :as FSM2]
 
     [taoensso.timbre :as t
      :refer-macros [log  debug  info  warn  error  fatal  report ]]
@@ -82,18 +81,22 @@
     :handling-local-msg
     :handling-remote-msg })
 
+(contains? connected-states :has-connected)
+
 (defn is-connected? [state]
   (contains? connected-states state))
 
 (defn not-connected? [state]
   (not (is-connected? state)))
 
+(not-connected? :has-connected)
+
 (defn add-connection-fsm [this key handler]
   ; (t/info (class this))
-  (FSM/add-fsm this key conn-state-table handler))
+  (FSM2/add-fsm this key conn-state-table handler))
 
 (defn remove-connection-fsm [this key]
-  (FSM/remove-fsm this key))
+  (FSM2/remove-fsm this key))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -108,6 +111,7 @@
 
         (go
           (when-let [msg (<! kill-chan)]
+            (println (str "*********killing it! " msg) )
             (event! :kill-chan msg)
             (swap! connection close-all-chans!)))
 

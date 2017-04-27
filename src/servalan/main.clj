@@ -57,7 +57,7 @@
   (init-logging))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord App []
+(defrecord App [server config]
   component/Lifecycle
   (start [c]
     c)

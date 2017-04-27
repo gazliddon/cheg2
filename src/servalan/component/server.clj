@@ -1,9 +1,11 @@
 (ns servalan.component.server
   (:require
     [taoensso.timbre :as t ]
+    [shared.fsm :as FSM]
+
+    [shared.connhelpers :as ch]
 
     [servalan.component.connections :as conns]
-    [servalan.component.connection :as conn]
 
     [shared.messages :refer [mk-msg]]
 
@@ -22,23 +24,25 @@
   (stats [_]))
 
 
-(defrecord Server [connections config server-inst]
+(defn print-stats [_]
+  
+  )
+
+
+(defrecord Server [connections config server-inst ]
 
   IServer
 
   (stats [this]
-    (let [conns (-> connections :connections-atom)]
-      (println (str "there are " (count @conns) " connections"))))
+    
+    )
 
   c/Lifecycle
 
   (start [this]
     (if-not server-inst
       (let [handler (fn [req]
-                      (->>
-                        (conn/mk-connection req)
-                        (c/start)
-                        (conns/add! connections)))]
+                      (conns/add! connections req))]
 
         (t/info "starting server component")
         (assoc this

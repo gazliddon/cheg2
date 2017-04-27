@@ -1,7 +1,5 @@
 (ns client.client
   (:require
-    [clojure.spec :as s ]
-    [clojure.spec.test :as st ]
     [shared.connhelpers :refer [create-connection-process
                                 add-connection-fsm
                                 remove-connection-fsm ]]
@@ -24,7 +22,7 @@
     [chord.client :as wsockets  ])
 
   (:require-macros
-    [cljs.spec.test :as st ]
+    ; [cljs.spec.test :as st ]
     [client.macros :as m :refer [dochan chandler]]
     [cljs.core.async.macros :refer [go go-loop]]))
 

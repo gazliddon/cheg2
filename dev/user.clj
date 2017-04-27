@@ -54,6 +54,10 @@
   (refresh :after 'user/go))
 
 (defn stats []
-  (let [server (-> system :server)]
-    (SERVER/stats server)))
+  (let [conns (-> system :connections)]
+    (conns/print-stats conns)))
+
+(defn clean []
+  (let [conns (-> system :connections)]
+    (conns/clean-up! conns)))
 

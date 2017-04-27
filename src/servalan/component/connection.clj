@@ -25,7 +25,7 @@
 (defmethod new-state :handling-local-msg
   [{:keys [ws-channel] :as this} ev payload]
   (do
-    (t/info "got local msg " payload)
+    (t/info "got local msg " ev " " payload)
     (a/put! ws-channel payload)
     (FSM/event! this :done {} )))
 
@@ -74,6 +74,10 @@
   (get-state [this ] (FSM/get-state @fsm))
 
   (event! [this ev payload]
+    (println (str "state is: " (FSM/get-state this)))
+    (println (str "ev is" ev) )
+    (println (str "payload is" payload) )
+    (println "")
     (FSM/event! @fsm ev payload))
 
   c/Lifecycle
@@ -101,9 +105,11 @@
   (let [com-rx (a/chan)
         com-tx (a/chan)
         com-chan (su/bidi-ch com-tx com-rx)]
-    (map->Connection {:id (keyword-uuid)
-                      :kill-chan (a/chan)
-                      :com-chan com-chan
-                      :ws-channel (:ws-channel req)
-                      :req req })))
+
+    (->
+      (map->Connection {:id (keyword-uuid)
+                        :kill-chan (a/chan)
+                        :com-chan com-chan
+                        :ws-channel (:ws-channel req) })  
+      (c/start))))
 

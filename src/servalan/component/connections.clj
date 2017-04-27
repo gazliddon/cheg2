@@ -1,12 +1,16 @@
 (ns servalan.component.connections
   (:require
     [taoensso.timbre :as t ]
+    [servalan.component.clock :as clock]
+
+    [servalan.component.connection :as conn]
 
     [shared.fsm :as fsm]
 
     [shared.messages :refer [mk-msg]]
 
     [shared.connhelpers :as ch]
+    [shared.fsm :as FSM]
 
     [shared.protocols.clientconnection :as client]
 
@@ -98,7 +102,27 @@
 
 ;;;;;;;;;;
 
-(defrecord Connections [connections-atom]
+(defn print-stats [connections]
+ (let [conns @(-> connections :connections-atom)]
+      (println (str "there are " (count conns) " connections"))
+      (doseq [[k c] conns]
+        (let [state (FSM/get-state c)]
+        (println (str "not conn: " (ch/not-connected? state) " state " state))))
+      ) 
+ :done)
+
+(defn clean-connections! [connections]
+ (let [conns @(-> connections :connections-atom)]
+   (into {} 
+         (->
+           (fn [[k v]]
+             (let [state (FSM/get-state v)]
+               (do
+                 (c/stop v)
+                 (ch/not-connected? state))))
+           (filter conns)))))
+
+(defrecord Connections [connections-atom clock]
   c/Lifecycle
 
   (start [this]
@@ -111,30 +135,31 @@
     (when connections-atom
       (t/info "stopping connections component")
       (close-all! this))
-      (assoc this :connections-atom nil)  )
+      (t/info "done stopping connections component")
+      (assoc this :connections-atom nil))
 
   IConnections
 
   (clean-up! [this]
     (do
-      (let [new-conns (into {} (filter (fn [[k v]]
-                                         (ch/not-connected? v)) @connections-atom))]
-
-        (t/info "cleaning up connections " (count @connections-atom))
-        (reset! connections-atom (into {} new-conns))
-        (t/info "cleaned up connections " (count @connections-atom))))
+      (let [conns @connections-atom
+            c-before (count conns)
+            new-conns (clean-connections! conns)
+            c-after (count new-conns) ]
+        (println "before " c-before " after " c-after)
+        (reset! connections-atom (into {} new-conns))))
     nil)
 
-  (add! [this conn]
+  (add! [this req]
     (do
-      (clean-up! this)
-
-      (let [id (:id conn)
-            has-con (has-connection? @connections-atom conn)]
-
-        (when-not has-con
-          (swap! connections-atom assoc id conn)
-          (send-to-connection! conn (mk-msg :hello-from-server {:id id } 0)))
+      (let [client-connection (conn/mk-connection req)
+            id (:id client-connection) ]
+        (do
+          (clean-up! this)
+          (swap! connections-atom assoc id client-connection)
+          (send-to-connection!
+            client-connection
+            (mk-msg :hello-from-server {:id id } (clock/get-time clock))))
 
         nil)))
 
@@ -156,8 +181,8 @@
 
   (close-all! [this]
     (do
-      (call-connections! @connections-atom client/disconnect! )
       (clean-up! this)
+      (call-connections! @connections-atom client/disconnect! )
       nil)))
 
 (defn connections-component []

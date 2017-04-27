@@ -15,6 +15,10 @@
   (get-time [_]
             ))
 
+
+(defn get-sys-time-millis []
+  (double (/ (System/nanoTime) 1000000)))
+
 (defrecord Clock [base-time]
 
   component/Lifecycle
@@ -22,14 +26,14 @@
       (->
         this
         (component/stop)
-        (assoc :base-time (System/nanoTime)))) 
+        (assoc :base-time (get-sys-time-millis))))
 
   (stop [this]
     (assoc this :base-time nil))
 
   IClock
   (get-time [this]
-    (- base-time (System/nanoTime))))
+    (- (get-sys-time-millis) base-time )))
 
 (defn mk-clock []
   (map->Clock {}))

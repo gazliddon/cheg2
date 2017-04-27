@@ -1,7 +1,6 @@
 (ns client.core
   (:require
     [client.audio :as AU]
-    [ajax.core :refer [GET POST ajax-request json-request-format json-response-format raw-response-format]]
     [client.game :as game]
     [cljs.analyzer :as ana]
     [taoensso.timbre :as t
