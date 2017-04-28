@@ -14,8 +14,6 @@
 
     [shared.protocols.clientconnection :as client]
 
-    [servalan.component.connection :as comp.connection]
-
     [clojure.core.async :refer [chan <!! >!! <! >! put! go ] :as a]
 
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
@@ -71,7 +69,6 @@
   {:type :player
    :last-ping -1
    :remote (:remote-addr req)
-   :id (comp.connection/keyword-uuid)
    :ws-channel ws-channel })
 
 (defn mk-player-msg [typ payload event-time]
@@ -100,27 +97,45 @@
   (t/info "sending " msg " to " id)
   (put! com-chan msg))
 
+
+;;;;;;;;;;
+
+(defn part-map [f mp]
+  (->
+    (fn [r k v]
+      (let [tst (f v)]
+        (assoc-in r [tst k] v)))
+    (reduce-kv {} mp)))
+
 ;;;;;;;;;;
 
 (defn print-stats [connections]
- (let [conns @(-> connections :connections-atom)]
-      (println (str "there are " (count conns) " connections"))
-      (doseq [[k c] conns]
-        (let [state (FSM/get-state c)]
-        (println (str "not conn: " (ch/not-connected? state) " state " state))))
-      ) 
- :done)
+  (let [conns @(-> connections :connections-atom)]
+    (println (str "there are " (count conns) " connections"))
+    (doseq [[k c] conns]
+      (let [state (FSM/get-state c)]
+        (println (str "not conn: " (ch/not-connected? state) " state " state))))) 
+  :done)
 
-(defn clean-connections! [connections]
- (let [conns @(-> connections :connections-atom)]
-   (into {} 
-         (->
-           (fn [[k v]]
-             (let [state (FSM/get-state v)]
-               (do
-                 (c/stop v)
-                 (ch/not-connected? state))))
-           (filter conns)))))
+
+(defn conn-dead? [conn]
+  (ch/not-connected? (FSM/get-state conn)))
+
+(defn part-connections [conns]
+ (let [mp (part-map conn-dead? conns)
+        running (or (get true mp ) {})
+        closed (or (get false map) {}) ]
+    (do
+      [running closed])))
+
+(defn clean-connections! [{:keys [connections-atom]}]
+  (let [conns @connections-atom
+        [running closed] (part-connections conns)]
+    (do
+      (reset! connections-atom running)
+      (doseq [[_ conn] closed] (c/stop conn))
+      {:before (count conns)
+       :after (count closed) })))
 
 (defrecord Connections [connections-atom clock]
   c/Lifecycle
@@ -142,12 +157,8 @@
 
   (clean-up! [this]
     (do
-      (let [conns @connections-atom
-            c-before (count conns)
-            new-conns (clean-connections! conns)
-            c-after (count new-conns) ]
-        (println "before " c-before " after " c-after)
-        (reset! connections-atom (into {} new-conns))))
+      (let [stats (clean-connections! connections-atom) ]
+        (println "before " (:before stats) " after " (:after stats))))
     nil)
 
   (add! [this req]
@@ -176,6 +187,7 @@
 
   (broadcast! [this msg]
     (do
+      (clean-up! this)
       (call-connections! @connections-atom send-to-connection! msg)
       nil))
 
