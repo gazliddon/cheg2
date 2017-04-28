@@ -6,9 +6,9 @@
     [servalan.component.connection :as conn]
 
     [shared.messages :refer [mk-msg]]
+    [shared.fsm :as FSM]
 
     [shared.connhelpers :as ch]
-    [shared.fsm :as FSM]
 
     [shared.protocols.clientconnection :as client]
 
@@ -26,7 +26,6 @@
   (add!  [this conn])
   (send! [this id msg])
   (broadcast! [this msg])
-  (close! [this id])
   (close-all! [this]))
 
 (def all-players (atom []))
@@ -77,25 +76,15 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- call-connection! [connections id method & payload]
-  (let [conn (get id connections)]
-    (when conn
-      (apply method conn payload)))
+(defn- call-connection! [{:keys[connections-atom]} id method & payload]
+  (let [conn (get @connections-atom id)]
+    (apply method conn payload))
   nil)
 
 (defn- call-connections!
-  [connections method & payload]
-  (doseq [[k conn] connections ]
-    (apply method conn payload)) )
-
-(defn- has-connection? [connections id]
-  (get connections id nil))
-
-(defn- send-to-connection! [{:keys [id com-chan] :as conn} msg]
-  (do
-    (t/info "sending " msg " to " id)
-    (FSM/event! conn :local-message msg)))
-
+  [{:keys [connections-atom]} method & payload]
+  (doseq [[k conn] @connections-atom ]
+    (apply method conn payload)))
 ;;;;;;;;;;
 
 (defn part-map [f mp]
@@ -110,15 +99,12 @@
 (defn print-stats [connections]
   (let [conns @(-> connections :connections-atom)]
     (println (str "there are " (count conns) " connections"))
-    (doseq [[k c] conns]
-      (let [state (FSM/get-state c)]
-        (println (str "not conn: " (ch/not-connected? state) " state " state))))) 
+    (doseq [[k conn] conns]
+      (println (str "connected? " (client/is-connected? conn) ))))
   :done)
 
-
 (defn conn-dead? [conn]
-  (ch/not-connected? (FSM/get-state conn)))
-
+  (not (client/is-connected? conn)))
 
 (defn partition-connections [conns]
  (let [mp (part-map conn-dead? conns)
@@ -132,9 +118,7 @@
         [to-close to-keep] (partition-connections conns)]
     (do
       (reset! connections-atom to-keep)
-
-      (doseq [[_ conn] to-close]
-        (c/stop conn))
+      (doseq [[_ conn] to-close] (c/stop conn))
 
       {:before (count conns)
        :after (count to-keep) })))
@@ -143,61 +127,53 @@
   c/Lifecycle
 
   (start [this]
-    (let [this (c/stop this)]
-        (t/info "starting connections component: I'm listening!")
-        (assoc this
-               :connections-atom (atom {}))))
+    (do
+      (t/info "starting connections component: I'm listening!")
+      (->
+        (c/stop this)
+        (assoc :connections-atom (atom {})))))
 
   (stop [this]
     (when connections-atom
-      (t/info "stopping connections component")
       (close-all! this))
-      (t/info "done stopping connections component")
-      (assoc this :connections-atom nil))
+    (assoc this :connections-atom nil))
 
   IConnections
 
   (clean-up! [this]
-    (comment do
-      (let [stats (clean-connections! connections-atom) ]
-        (println "before " (:before stats) " after " (:after stats))))
-    nil)
+    (let [stats (clean-connections! this)
+          culled (- (:after stats) (:before stats)) ]
+      (when (not= culled 0)
+        (t/info "Culled " culled " connections")))
+    this)
 
   (add! [this req]
-    (do
-      (let [client-connection (conn/mk-connection req)
-            id (:id client-connection) ]
-        (do
-          (clean-up! this)
-          (swap! connections-atom assoc id client-connection)
-          (send-to-connection!
-            client-connection
-            (mk-msg :hello-from-server {:id id } (clock/get-time clock))))
-
-        nil)))
+    (let [client (conn/mk-connection req clock)
+          id (:id client) ]
+      (do
+        (clean-up! this)
+        (swap! connections-atom assoc id client)
+        (send!
+          this id
+          (mk-msg :hello-from-server {:id id } (clock/get-time clock)))
+        this)))
 
   (send! [this id msg]
     (do
-      (call-connection! @connections-atom id send-to-connection! msg)
-      nil))
-
-  (close! [this id]
-    (do
-      (call-connection! @connections-atom id client/disconnect!)
-      (swap! @connections-atom assoc id nil)
-      nil))
+      (call-connection! this id client/send! msg)
+      this))
 
   (broadcast! [this msg]
     (do
       (clean-up! this)
-      (call-connections! @connections-atom send-to-connection! msg)
-      nil))
+      (call-connections! this client/send! msg)
+      this))
 
   (close-all! [this]
     (do
       (clean-up! this)
-      (call-connections! @connections-atom client/disconnect! )
-      nil)))
+      (call-connections! this client/disconnect! )
+      this)))
 
 (defn connections-component []
   (map->Connections {} ))

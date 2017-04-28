@@ -6,6 +6,8 @@
     [servalan.component.pinger :refer [mk-pinger] ]
     [servalan.component.clock :refer [mk-clock] ]
 
+    [shared.component.messagebus :as MB ]
+
     [taoensso.timbre :as t ]
     [taoensso.timbre.appenders.core :as appenders]
 
@@ -16,33 +18,9 @@
     [clj-uuid :as uuid]
     [chord.http-kit :refer [with-channel wrap-websocket-handler]]
     [org.httpkit.server :refer [run-server]]
-    [com.stuartsierra.component :refer [start-system stop-system]:as component]
+    [com.stuartsierra.component :refer [start-system stop-system]:as c]
     [clojure.pprint :as pp])
   (:gen-class))
-
-(defn to-secs [t]
-  (double (/ t 1000000000)))
-
-(defn mk-timer-chan
-
-  ([millis dest-ch]
-
-   (a/go
-     (loop [start (System/nanoTime) t start ]
-
-       (let [_  (<! (a/timeout millis))
-             nt (System/nanoTime)
-             dt (- nt t) ]
-
-         (when (put! dest-ch {:start (to-secs start)
-                              :time (to-secs (- nt start) )
-                              :dtime (to-secs dt )})
-
-           (recur start (System/nanoTime))))))
-   dest-ch)
-
-  ([millis]
-   (mk-timer-chan millis (a/chan (a/dropping-buffer 1)))))
 
 
 (defn init-logging []
@@ -57,13 +35,16 @@
   (init-logging))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord App [server config]
-  component/Lifecycle
-  (start [c]
-    c)
+(defrecord App [server config messages]
+  c/Lifecycle
 
-  (stop [c]
-    c))
+  (c/start [c]
+    c
+    )
+
+  (c/stop [c]
+    c)) 
+
 
 (def config {:port 6502})
 
@@ -71,7 +52,9 @@
 
   (t/info "creating system")
 
-  (component/system-map
+  (c/system-map
+
+    :messages (MB/mk-message-bus :type)
 
     :clock (mk-clock)
 
@@ -79,20 +62,21 @@
 
     :connect-ch (a/chan)
 
-    :pinger (component/using
+    :pinger (c/using
               (mk-pinger)
               [:clock :connections])
 
-    :connections (component/using
+    :connections (c/using
                    (connections-component)
                    [:config
-                    :clock ])
+                    :clock
+                    :messages ])
 
-    :server (component/using
+    :server (c/using
               (server-component)
-              [:connect-ch :connections :config])
+              [:connect-ch :connections :config :messages ])
 
-    :app (component/using (map->App {}) [:server :config])))
+    :app (c/using (map->App {}) [:server :config :messages])))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

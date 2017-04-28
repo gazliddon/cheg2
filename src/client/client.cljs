@@ -1,12 +1,14 @@
 (ns client.client
   (:require
-    [shared.connhelpers :refer [create-connection-process
+    [shared.connhelpers :as ch :refer [create-connection-process
                                 add-connection-fsm
                                 remove-connection-fsm ]]
 
+    [shared.fsm :as FSM]
+
+    [shared.component.messagebus :as MB :refer [mk-message-bus] ]
+
     [shared.messages :refer [mk-msg]]
-    [shared.fsm :refer [add-fsm
-                        remove-fsm ]]
 
     [client.utils :as cu]
 
@@ -16,7 +18,6 @@
 
     [clojure.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
     [client.html :as html]
-    [shared.fsm :as fsm]
     [shared.protocols.clientconnection :as client]
     [com.stuartsierra.component :as c]
     [chord.client :as wsockets  ])
@@ -24,41 +25,50 @@
   (:require-macros
     ; [cljs.spec.test :as st ]
     [client.macros :as m :refer [dochan chandler]]
-    [cljs.core.async.macros :refer [go go-loop]]))
+    [cljs.core.async.macros :as a :refer [go go-loop]]))
 
 (enable-console-print!)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn send-from-nw-msg [{:keys [messages] :as this} payload]
+  (let [wrapped-msg {:type :from-remote :payload payload}]
+    (do
+      (MB/message messages wrapped-msg))))
+
+(defn send-ui-msg [{:keys [messages] :as this} payload]
+    (MB/message messages {:type :ui :payload payload}))
+
+(defn send-disconnected-msg [this]
+    (send-from-nw-msg this {:type :disconnected}))
+
 (defmulti new-state (fn [_ ev _] (:state ev)))
 
 (defmethod new-state :handling-local-msg
   [{:keys [ws-atom] :as this} ev payload]
   (do
-    (t/info "handling local msg " payload)
     (if (put! @ws-atom payload)
-      (fsm/event! this :done {} )  
-      (fsm/event! this :remote-socket-closed {} ))))
+      (FSM/event! this :done {} )
+      (FSM/event! this :remote-socket-closed {} ))))
 
 (defmethod new-state :handling-remote-msg
-  [{:keys [com-chan ui-chan] :as this} _ payload]
+  [{:keys [messages] :as this} _ payload]
   (do
-    (t/info "handling remote-msg " payload)
-    (put! ui-chan (mk-msg :log payload 0))
-    (put! com-chan payload)
-    (fsm/event! this :done {} )))
+    (send-from-nw-msg this payload)
+    (FSM/event! this :done {} )))
 
 (defmethod new-state :is-disconnecting
   [{:keys [kill-chan] :as this} _ _]
   (do
     (put! kill-chan {:kill-msg "is-disconnecting"})
-    (fsm/event! this :done {} ) ))
+    (FSM/event! this :done {} ) ))
 
 (defmethod new-state :is-connecting
-  [{:keys [ws-atom com-chan kill-chan] :as this} ev {:keys [url] :as payload}]
+  [{:keys [ws-atom com-chan kill-chan] :as this} ev url]
   (go
     (let [ch (wsockets/ws-ch url) 
           {:keys [ws-channel error] :as k} (<! ch)
-          event!  (fn [ev payload] (fsm/event! this ev payload)) ]
+          event!  (fn [ev payload] (FSM/event! this ev payload)) ]
 
       (if error
         ;; An error
@@ -70,11 +80,11 @@
 
 (defmethod new-state :has-disconnected
   [this _ _]
-  (fsm/event! this :done {}))
+  (do
+    (send-disconnected-msg this)
+    (FSM/event! this :done {})))
 
-(defmethod new-state :none [this ev payload]
-  
-  )
+(defmethod new-state :none [this ev payload])
 
 (defmethod new-state :has-connected [this ev payload])
 
@@ -84,49 +94,73 @@
   (t/error "payload -> " payload))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord ClientComponent [ui-chan com-chan
-                            started? config fsm kill-chan ws-atom] 
+(defrecord ClientComponent [com-chan config
+                            started? fsm kill-chan messages 
+                            to-remote-chan ]
 
-  fsm/IStateMachine
-  (get-state [this] (fsm/get-state @fsm))
-  (event! [this ev payload] (fsm/event! @fsm ev payload))
+  FSM/IStateMachine
+
+  (get-state [this] (FSM/get-state @fsm))
+
+  (event! [this ev payload] (FSM/event! @fsm ev payload))
 
   client/IClientConnection
 
-  (state? [this ] (fsm/get-state @fsm))
+  (send! [this msg]
+    (do
+      (FSM/event! this :local-message msg)
+      this))
 
   (disconnect! [this]
-    (fsm/event! this :disconnect {}))
+    (do
+      (FSM/event! this :disconnect {})
+      this))
 
   (connect! [this]
-    (fsm/event!
-      this
-      :connect {:url (:url config )
-                :com-chan com-chan })  )
+    (do
+      (FSM/event! this :connect (-> config :conn-config :url))
+      this))
+
+  (is-connected? [this]
+    (ch/is-connected? (FSM/get-state this)))
 
   c/Lifecycle
 
   (start [this]
-    (let [this (c/stop this)]
-      (->
-        this
-        (assoc :started? true
-               :kill-chan (chan)
-               :ws-atom (atom nil))
-
-        (add-connection-fsm :fsm new-state))))
+    (let [to-remote-chan (MB/sub-topic messages :to-remote (chan)) 
+          
+          this (-> (c/stop this)
+                   (assoc 
+                     :to-remote-chan to-remote-chan
+                     :started? true
+                     :kill-chan (chan)
+                     :ws-atom (atom nil))
+                   (add-connection-fsm :fsm new-state))]
+      (do
+        (a/go-loop
+          []
+          (if-let [msg (<! to-remote-chan)]
+            (do
+              (client/send! this msg)
+              (recur))
+            (t/info "to-network sub closed")))
+        this)))
 
   (stop [this]
-    (when started?
-      (t/info "stoping connection")
-      (put! kill-chan {:kill-msg "stopped"})
-      (remove-connection-fsm this :fsm))
+    (let [this (if started?
+                 (do
+                   (t/info "stoping connection")
+                   (close! to-remote-chan)
+                   (client/disconnect! this)
+                   (remove-connection-fsm this :fsm) )
+                 this)]
+    (assoc this
+           :to-remote-chan nil
+           :started? nil
+           :kill-chan nil    
+           :ws-atom nil))))
 
-    (assoc this :started? nil
-                :kill-chan nil
-                :ws-atom nil)))
-
-(defn mk-client-component [config] (map->ClientComponent {:config config }))
+(defn mk-client-component [] (map->ClientComponent {}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

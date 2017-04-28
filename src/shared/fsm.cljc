@@ -47,7 +47,7 @@
     (mapcat #(into [] %))
     (flatten)
     (distinct)))
- 
+
 (defn add-fsm [this fsm-key table dispatcher ]
   (let [fsm-atom (atom nil) ]
     (when-not (satisfies? IStateMachine this)

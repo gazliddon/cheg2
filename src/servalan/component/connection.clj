@@ -1,23 +1,18 @@
 (ns servalan.component.connection
   (:require
     [shared.fsm :as FSM]
-
     [shared.messages :refer [mk-msg]]
-
     [shared.utils :as su]
-
-    [shared.connhelpers :refer [add-connection-fsm
-                                remove-connection-fsm
-                                create-connection-process ]]
-
-    [clj-uuid :as uuid]
-
+    [shared.connhelpers :as ch ]
     [shared.protocols.clientconnection :as client]
 
-    [clojure.core.async :as a :refer [<! ]]
+    [servalan.component.clock :as clock]
 
+    [clojure.stacktrace :as st]
+
+    [clj-uuid :as uuid]
+    [clojure.core.async :as a]
     [taoensso.timbre :as t ]
-
     [com.stuartsierra.component :as c]))
 
 (defmulti new-state (fn [_ ev _] (:state ev)))
@@ -25,20 +20,26 @@
 (defmethod new-state :handling-local-msg
   [{:keys [ws-channel] :as this} ev payload]
   (do
-    (t/info "got local msg " ev " " payload)
     (if (a/put! ws-channel payload)
-      (FSM/event! this :done {} )  
-      (FSM/event! this :remote-socket-closed {} ))))
+      (do
+        (t/info "sent on local msg to client: " payload)
+        (FSM/event! this :done {} ))
+      (do
+        (t/error "failed to send local msg to client: " payload)
+        (FSM/event! this :remote-socket-closed {} )))))
 
 (defmethod new-state :handling-remote-msg
-  [{:keys [com-chan ] :as this} _ payload]
+  [{:keys [com-chan clock] :as this} _ {:keys [type payload] :as msg}]
   (do
-    (t/info "got remote msg " payload)
-    (a/put! com-chan payload)
+    (t/info "handling remote msg" msg )  
+    (when (= type :pong)
+      (let [t (clock/get-time clock )
+            ot (:ping-time payload ) ]
+        (t/info "PONG round time " (- t ot) )))
     (FSM/event! this :done {})))
 
 (defmethod new-state :is-disconnecting
-  [{:keys [kill-chan] :as this} _ _]
+  [{:keys [kill-chan] :as this} ev msg]
   (do
     (a/put! kill-chan {:kill-msg "is-disconnecting"})
     (FSM/event! this :done {} ) ))
@@ -47,7 +48,7 @@
   [{:keys [ws-atom com-chan kill-chan ws-channel] :as this} ev _]
   (let [ event!  (fn [ev payload] (FSM/event! this ev payload)) ]
     (do
-      (create-connection-process event! com-chan kill-chan ws-channel)
+      (ch/create-connection-process event! com-chan kill-chan ws-channel)
       (FSM/event! this :done {}))))
 
 (defmethod new-state :has-disconnected
@@ -62,58 +63,60 @@
   (t/error "ev      -> " ev)
   (t/error "payload -> " payload))
 
-(defrecord Connection [fsm req ws-channel kill-chan com-chan id server-chan]
+(defrecord Connection [id kill-chan com-chan ws-channel ]
 
   client/IClientConnection
 
-  (connect! [this] (FSM/event! this :connect {}))
-  (disconnect! [this] (FSM/event! this :disconnect {}))
-  (state? [this] (FSM/get-state this))
+  (send! [this msg]
+    (do
+      (a/put! com-chan msg)
+      this))
+
+  (connect! [this]
+    (do
+      (FSM/event! this :connect {})
+      this))
+
+  (disconnect! [this]
+    (do
+      (FSM/event! this :disconnect {})
+      this))
+
+  (is-connected? [this]
+    (ch/is-connected? (FSM/get-state this)))
 
   FSM/IStateMachine
 
-  (get-state [this ] (FSM/get-state @fsm))
+  (get-state [this ]
+    (FSM/get-state @(:fsm this)))
 
   (event! [this ev payload]
-    (println (str "state is: " (FSM/get-state this)))
-    (println (str "ev is" ev) )
-    (println (str "payload is" payload) )
-    (println "")
-    (FSM/event! @fsm ev payload))
+    (FSM/event! @(:fsm this ) ev payload))
 
   c/Lifecycle
 
   (start [this]
-    (let [this (-> (c/stop this)
-                   (add-connection-fsm :fsm new-state))]
-      (do
-        (client/connect! this)
-        this)))
+    (-> (c/stop this)
+        (ch/add-connection-fsm :fsm new-state)
+        (client/connect!)))
 
   (stop [this]
     ;; Need to not allow this to be restarted ever
-    (if fsm
+    (if (:fsm this)
       (->
-        this
-        (client/disconnect!)
-        (remove-connection-fsm :fsm))
+        (client/disconnect! this)
+        (ch/remove-connection-fsm :fsm))
       this)))
 
-(defn keyword-uuid []
-  (keyword (str "player-id-" (uuid/v4)) ))
-
-(defn mk-connection [req ]
-  (let [com-rx (a/chan)
-        com-tx (a/chan)
-        com-chan (su/bidi-ch com-tx com-rx)
-        server-chan (a/chan)
-        ]
+(defn mk-connection [req clock]
+  (let [com-chan (a/chan)  
+        ws-channel (:ws-channel req) ]
 
     (->
-      (map->Connection {:id (keyword-uuid)
+      (map->Connection {:id (keyword (str "player-id-" (uuid/v4)) )
                         :kill-chan (a/chan)
-                        :com-chan com-chan
-                        :ws-channel (:ws-channel req)
-                        :server-chan server-chan })  
+                        :com-chan (a/chan)
+                        :ws-channel ws-channel
+                        :clock clock })
       (c/start))))
 

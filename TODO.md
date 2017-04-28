@@ -1,15 +1,13 @@
-# Todo
-
-* Send server player position
-* Send all players to all connections
-
+# Todo Tomorrow
+* Get the client to send the ping time back
+    * losing payload from server on pings for some reason
+* Start music playing
+* Put player control back in
+    * Broadcast position to server
+* Repair text printer
+* Hook messages for UI to om/next bits
 
 # Server client pruning
-* client closing window send quit message
-	* http://stackoverflow.com/questions/21227383/how-to-detect-browser-window-tab-close-event
-* server check all clients for time since last pong
-* delete dead clients
-	* send quit msg and close the channel
 
 
 # Simple Auth

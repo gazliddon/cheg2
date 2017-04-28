@@ -1,5 +1,5 @@
 (ns servalan.component.pinger
-  (:require 
+  (:require
     [servalan.macros :as m]
 
     [servalan.component.clock :as clock]
@@ -15,6 +15,9 @@
 (defprotocol IPinger
   (got-pong [_ id]))
 
+(defn mk-ping-msg [t]
+  (mk-msg :ping {:ping-time (int t)} t))
+
 (defn mk-pinger-process [clock connections]
   (let [timer-chan (every-n-millis-ch 3000)]
     (do
@@ -22,9 +25,7 @@
         []
         (if-let [msg (a/<! timer-chan)]
           (let [t (clock/get-time clock)
-                msg (mk-msg :ping {} (int t))  ]
-
-            (t/info "broadcsting " msg " to " (type connections))
+                msg (mk-ping-msg t)  ]
             (conns/broadcast! connections msg)
             (recur))
 

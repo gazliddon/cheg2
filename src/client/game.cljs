@@ -1,9 +1,12 @@
 (ns client.game
 
   (:require
-    [goog.dom :as gdom]
+    [shared.protocols.clientconnection :as client]
     [shared.fsm :as fsm :refer [add-fsm remove-fsm]]
-  
+    [shared.component.messagebus :as MB ]
+
+    [goog.dom :as gdom]
+
     [client.sprdata :as sprdata]
 
     [taoensso.timbre :as t
@@ -25,7 +28,7 @@
 
   (:require-macros 
     [servalan.macros :as m :refer [dochan]]
-    [cljs.core.async.macros :refer [go go-loop]]))
+    [cljs.core.async.macros :as a :refer [go go-loop]]))
 
 
 
@@ -130,14 +133,15 @@
   (on-message [_ msg] ))
 
 (def game-state-table {:hello-from-server {:none :starting-game}
-                       :game-state {:running-game :getting-state}
 
-                       :send-to-server {:running-game :sending-to-server}
+                       :network-error {:running-game :doing-network-error}
 
-                       :done {:getting-state :running-game
-                              :sending-to-server :running-game
-                              :starting-game :running-game
-                              :stopping-game :none }
+                       :done {:starting-game :running-game
+                              :stopping-game :none
+                              :doing-pong :running-game
+                              :doing-network-error :none}
+
+                       :ping {:running-game :doing-pong }
 
                        :quit {:running-game :stopping-game} })
 
@@ -147,70 +151,72 @@
   (t/error "unhandled state entry" (:state ev)))
 
 (defmethod game-state :starting-game
-  [{:keys [state ui-chan] :as this} ev payload]
-
-  (put! ui-chan (mk-msg :game-started {} 0))
-  (t/info "starting game")
+  [{:keys [state ] :as this} ev payload]
+  (t/info "starting game" ev)
   (swap! state assoc :id 1)
   (fsm/event! this :done {}))
 
-(defmethod game-state :running-game
-  [{:keys [state] :as this} ev payload]
-  )
-
 (defmethod game-state :stopping-game
-  [{:keys [state ui-chan] :as this} ev payload]
-  (put! ui-chan (mk-msg :game-stopped {} 0))
-  (fsm/event! this :done {}) )
+  [{:keys [state ] :as this} ev payload]
+  (fsm/event! this :done {}))
 
-(defmethod game-state :sending-to-server
-  [{:keys [state] :as this} ev payload]  
-  (fsm/event! this :done {}) )
 
-(defn add-listeners [{:keys [events com-chan] :as this}]
+(defmethod game-state :running-game
+  [{:keys [state ] :as this} ev payload])
+
+(defmethod game-state :doing-pong
+  [{:keys [state messages] :as this} ev payload]
+  (let [reply {:type :to-remote :payload {:type :pong }}]
+    (do
+      ; (MB/message messages {:type :test :payload {}})
+      (MB/message messages  reply)
+      (fsm/event! this :done {})  )))
+
+(defn add-listeners [{:keys [events com-chan messages] :as this}]
   (let [anim-ch (p/anim-ch events)
-        ev-ch (p/events-ch events) ]
+        ev-ch (p/events-ch events)
+        from-remote-chan (MB/sub-topic messages :from-remote (chan)) ]
     (do
 
-      (t/info "listening for input from com-chan")
+      (t/info "listening for remote messages")
 
       (go-loop
         []
-        (if-let [msg (<! com-chan) ]
-             (do
-               (t/info "game handling com-chan msg " msg)
-               (on-network this msg)
-               (recur))
+        (if-let [msg (<! from-remote-chan)]
+          (do
+            (on-network this (:payload msg))
+            (recur))
+          (t/info "from remote channel closed")))
 
-             (t/info "com-chan closed")))
-
+      (t/info "listening for html events")
       (go-loop
         []
         (if-let [msg (<! ev-ch)]
           (do
             (on-message this msg)
             (recur))
-          (t/info "ev-ch closed")  ))
+          (t/info "html events chan closed")))
 
+      (t/info "listening for vblank events")
       (go-loop
         [t 0]
         (if-let [msg (<! anim-ch)] 
           (do
             (on-update this t)
             (recur (+ t (/ 1 60))))
-          (t/info "anim-ch closed")))))
+          (t/info "vblank events chan closed")))))
   this)
-
 
 (defmulti refresh (fn [this _]))
 
-(defmethod refresh :default [this state]
-  )
+(defmethod refresh :default [this state])
+(defmethod refresh :none [this state])
 
-(defmethod refresh :none [this state]
-  )
+(defn ui-msg [{:keys [messages] :as this} payload]
+  (MB/message messages {:type :ui :payload payload}))
 
-(defrecord Game [started events system com-chan state fsm ui-chan]
+(defrecord Game [started events system com-chan state fsm messages
+                 client-connection ]
 
   fsm/IStateMachine
 
@@ -218,59 +224,54 @@
 
   (event! [this ev payload]
     (let [new-state (fsm/event! @fsm ev payload)]
-
-      ;; if there's state change then
-      ;; tell the ui
-      (when new-state
-        (put! ui-chan (mk-msg :game-state-change {:state new-state} 0)))
-
-      new-state))
+      (do
+        (when new-state
+          (ui-msg this {:type :state-change :event ev :payload payload}))
+        this  ))) 
 
   IGame
 
   (on-network [this msg]
-    (t/info "on-network!" msg)
-    (t/info "player is " @state)
     (fsm/event! this (:type msg) (:payload msg)))
 
   (on-update [this t ]
     (do
-      ;; send player pos to server
-      (let [player-msg 
-            (->
-              (mk-msg :player @player 0)
-              (assoc :id (:id @state)))]
-
-        (fsm/event! this :send-to-server player-msg))
-
       (case (fsm/get-state this)
         :running-game (print! system t)
-        (print-waiting! system t))
-      ))
+        (print-waiting! system t))))
 
-  (on-message [_ msg] )
+  (on-message [_ msg])
 
   c/Lifecycle
+
   (start [this]
 
-    (t/info "Starting game component")
+    (let [this (-> (c/stop this)
+                   (assoc :started true
+                          :state (atom nil))
+                   (add-fsm :fsm game-state-table game-state )
+                   (add-listeners))]
+      (do
 
-    (put! ui-chan (mk-msg :game-connecting {} 0))
+        ;; No idea why I need this, first message seems to be lost
 
-    (let [ret (-> (c/stop this)
-                  (assoc :state (atom {:id -1})
-                         :started true )
-                  (add-fsm :fsm game-state-table game-state )
-                  (add-listeners))]
-      ret))
+        (MB/message messages {:type :test :payload {}})
+
+        (client/connect! client-connection)
+        this)))
 
   (stop [this]
-    (when started
-      (fsm/event! this :quit {})
-      (remove-fsm this :fsm))
-    (assoc this
-           :started nil
-           :state nil )))
+    (if started
+      (do
+        (->
+          this
+          (fsm/event! :quit {})
+          (remove-fsm :fsm) 
+          (assoc :started nil
+                 :state nil)))
+      this))
+  
+  )
 
 (defn mk-game[]
   (map->Game {}))

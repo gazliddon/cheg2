@@ -1,4 +1,3 @@
-
 (ns servalan.component.clock
   (:require
 
@@ -7,14 +6,11 @@
     [shared.utils :as u :refer [every-n-millis-ch]]
 
     [taoensso.timbre :as t ]
-    [com.stuartsierra.component :refer [start-system stop-system]:as component] )
-  )
 
+    [com.stuartsierra.component :refer [start-system stop-system]:as component]))
 
 (defprotocol IClock
-  (get-time [_]
-            ))
-
+  (get-time [_]))
 
 (defn get-sys-time-millis []
   (double (/ (System/nanoTime) 1000000)))

@@ -2,7 +2,7 @@
   )
 
 (defprotocol IClientConnection
-  (send! [_ _])
+  (is-connected? [_])
   (connect! [_])
-  (state? [_])
+  (send! [_ msg])
   (disconnect! [_]))

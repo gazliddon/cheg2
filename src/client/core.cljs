@@ -1,5 +1,8 @@
 (ns client.core
   (:require
+
+    [shared.component.messagebus :as MB :refer [mk-message-bus] ]
+
     [client.audio :as AU]
     [client.game :as game]
     [cljs.analyzer :as ana]
@@ -53,13 +56,33 @@
 
       (su/bidi-ch reader writer))))
 
-(defn mk-game [config ui-chan ]
 
-  (let [com-rx (chan)
-        com-tx (chan)
-        com-chan (su/bidi-ch com-tx com-tx) ]
+(defrecord App [game]
+
+  c/Lifecycle
+
+  (start [this]
+    this)
+
+  (stop [this]
+    this)
+
+  )
+
+(defn mk-app []
+  (map->App {}))
+
+(def app ( mk-app ))
+
+(defn mk-game [config ]
+
+  (let [com-chan (chan)
+        messages (MB/mk-message-bus :type) ]
 
     (c/system-map
+
+      :messages messages
+
       :com-chan com-chan
 
       :config config
@@ -68,25 +91,27 @@
 
       :events (mk-html-events-component)
 
-      :ui-chan ui-chan
-
       :client-connection (c/using
-                           ( mk-client-component (:conn-config config) )
-                           [:com-chan
-                            :ui-chan])
+                           (mk-client-component )
+                           [:config
+                            :com-chan
+                            :messages])
 
-      :game (c/using 
+      :game (c/using
               (game/mk-game)
-              [:com-chan
-               :ui-chan
-               :client-connection
+              [:client-connection
+               :config
+               :messages
                :events
-               :system
-               :config])
-      )  
+               :system])
+
+
+      :app (c/using
+             (map->App {})
+             [:config
+              :game ])
+      )
     )
-
-
   )
 
 (defonce sys-atom (atom nil))
@@ -156,7 +181,7 @@
 
 
 
-(defui App
+(defui OmApp
 
   static om/IQuery
 
@@ -297,10 +322,8 @@
 
 
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def reconciler
-
   (om/reconciler
     {:state app-state
      :parser (om/parser {:read reader-fn :mutate mutate-fn})}))
@@ -311,30 +334,11 @@
 (defn set-ui-game-state! [v]
   (set-ui-field! :game-state v))
 
-(defn mk-ui-listener [ch]
-  (go-loop []
-    (when-let [msg (<! ch)]
-      (case (:type msg)
-            :game-connecting (set-ui-game-state! :connecting)
-            :game-started (set-ui-game-state! :running)
-            :game-stopped (set-ui-game-state! :stopped)
-            :log (do
-                   (om/transact! reconciler `[(game/log ~msg)]))
-            :default)
-      (recur)
-      )
-    )
-  )
-
-(def ui-chan (chan))
-
 (defn main []
 
   (let [app-el (gdom/getElement "app") ]
     (do
-      (om/add-root! reconciler App app-el)
-      ;; listen for any msg to the UI
-      (mk-ui-listener ui-chan))))
+      (om/add-root! reconciler OmApp app-el))))
 
 (defn stop []
  (when @sys-atom
@@ -350,20 +354,12 @@
   (do
     (stop)
     (->>
-      (mk-game config ui-chan)
-      (c/start-system ) 
-      (reset! sys-atom ))  
-    
-    (-> @sys-atom :client-connection client/connect!)))
+      (mk-game config )
+      (c/start-system )
+      (reset! sys-atom))))
 
 (defn restart []
   (start))
 
 (stop)
 (main)
-
-
-
-
-
-

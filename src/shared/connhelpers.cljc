@@ -1,17 +1,16 @@
 (ns shared.connhelpers
   (:require
-    [shared.fsm :as FSM2]
+    [shared.fsm :as FSM]
 
     [taoensso.timbre :as t
      :refer-macros [log  debug  info  warn  error  fatal  report ]]
 
     #?(:clj
-       [clojure.core.async :as a :refer [chan <! >! put!
+       [clojure.core.async :as a :refer [chan <! >!
                                    close! go-loop alts!
                                    sliding-buffer timeout go]]
        :cljs
        [cljs.core.async :as a :refer [chan
-                                      put!
                                       close! <! >!
                                       alts! sliding-buffer timeout]])
 
@@ -68,11 +67,13 @@
 
    :remote-socket-error {:is-connecting :is-disconnecting
                          :has-connected :is-disconnecting
-                         :handling-local-msg :is-disconnecting }
+                         :handling-local-msg :is-disconnecting
+                         :handling-remote-msg :is-disconnecting }
 
    :remote-socket-closed {:is-connecting :is-disconnecting
                           :has-connected :is-disconnecting
-                          :handling-local-msg :is-disconnecting }
+                          :handling-local-msg :is-disconnecting
+                          :handling-remote-msg :is-disconnecting }
 
    :connection-error {:is-connecting :is-disconnecting
                       :has-connected :is-disconnecting } })
@@ -91,14 +92,12 @@
 (defn not-connected? [state]
   (not (is-connected? state)))
 
-(not-connected? :has-connected)
-
 (defn add-connection-fsm [this key handler]
   ; (t/info (class this))
-  (FSM2/add-fsm this key conn-state-table handler))
+  (FSM/add-fsm this key conn-state-table handler))
 
 (defn remove-connection-fsm [this key]
-  (FSM2/remove-fsm this key))
+  (FSM/remove-fsm this key))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -113,7 +112,6 @@
 
         (go
           (when-let [msg (<! kill-chan)]
-            (println (str "*********killing it! " msg) )
             (event! :kill-chan msg)
             (swap! connection close-all-chans!)))
 
@@ -123,7 +121,6 @@
           (if-let [msg (<! com-chan)]
 
             (do ;; yes
-                (t/info "**** LOCAL MESSAGE" msg)
                 (event! :local-message msg)
                 (recur))
 

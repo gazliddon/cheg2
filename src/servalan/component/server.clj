@@ -23,18 +23,11 @@
 (defprotocol IServer
   (stats [_]))
 
-
-(defn print-stats [_]
-  
-  )
-
-
 (defrecord Server [connections config server-inst ]
 
   IServer
 
   (stats [this]
-    
     )
 
   c/Lifecycle
