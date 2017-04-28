@@ -35,8 +35,9 @@
   [{:keys [ws-atom] :as this} ev payload]
   (do
     (t/info "handling local msg " payload)
-    (put! @ws-atom payload)
-    (fsm/event! this :done {} )))
+    (if (put! @ws-atom payload)
+      (fsm/event! this :done {} )  
+      (fsm/event! this :remote-socket-closed {} ))))
 
 (defmethod new-state :handling-remote-msg
   [{:keys [com-chan ui-chan] :as this} _ payload]
@@ -61,14 +62,9 @@
 
       (if error
         ;; An error
-        (do
-          (println "an error!")
-          (event! :connection-error {:error error})
-          )
+        (event! :connection-error {:error error})
         ;; hunky dory
         (do
-
-          (println "hunky dory!")
           (reset! ws-atom ws-channel)
           (create-connection-process event! com-chan kill-chan ws-channel))))))
 

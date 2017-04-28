@@ -26,8 +26,9 @@
   [{:keys [ws-channel] :as this} ev payload]
   (do
     (t/info "got local msg " ev " " payload)
-    (a/put! ws-channel payload)
-    (FSM/event! this :done {} )))
+    (if (a/put! ws-channel payload)
+      (FSM/event! this :done {} )  
+      (FSM/event! this :remote-socket-closed {} ))))
 
 (defmethod new-state :handling-remote-msg
   [{:keys [com-chan ] :as this} _ payload]
@@ -61,7 +62,7 @@
   (t/error "ev      -> " ev)
   (t/error "payload -> " payload))
 
-(defrecord Connection [fsm req ws-channel kill-chan com-chan id]
+(defrecord Connection [fsm req ws-channel kill-chan com-chan id server-chan]
 
   client/IClientConnection
 
@@ -101,15 +102,18 @@
 (defn keyword-uuid []
   (keyword (str "player-id-" (uuid/v4)) ))
 
-(defn mk-connection [req]
+(defn mk-connection [req ]
   (let [com-rx (a/chan)
         com-tx (a/chan)
-        com-chan (su/bidi-ch com-tx com-rx)]
+        com-chan (su/bidi-ch com-tx com-rx)
+        server-chan (a/chan)
+        ]
 
     (->
       (map->Connection {:id (keyword-uuid)
                         :kill-chan (a/chan)
                         :com-chan com-chan
-                        :ws-channel (:ws-channel req) })  
+                        :ws-channel (:ws-channel req)
+                        :server-chan server-chan })  
       (c/start))))
 

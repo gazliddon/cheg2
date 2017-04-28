@@ -53,15 +53,9 @@
   (stop)
   (refresh :after 'user/go))
 
-(defn stats []
-  (let [conns (-> system :connections)]
-    (conns/print-stats conns)))
+(defn get-conns [] (-> system :connections) )
 
-(defn clean []
-  (let [conns (-> system :connections)]
-    (conns/clean-up! conns)))
+(defn stats [] (conns/print-stats (get-conns)))
+(defn clean [] (conns/clean-up! (get-conns)))
 
-(defn clean-2 []
-  (let [conns (-> system :connections)]
-    (conns/clean-connections! conns)))
 

@@ -5,8 +5,6 @@
 
     [servalan.component.connection :as conn]
 
-    [shared.fsm :as fsm]
-
     [shared.messages :refer [mk-msg]]
 
     [shared.connhelpers :as ch]
@@ -93,10 +91,10 @@
 (defn- has-connection? [connections id]
   (get connections id nil))
 
-(defn- send-to-connection! [{:keys [id com-chan]} msg]
-  (t/info "sending " msg " to " id)
-  (put! com-chan msg))
-
+(defn- send-to-connection! [{:keys [id com-chan] :as conn} msg]
+  (do
+    (t/info "sending " msg " to " id)
+    (FSM/event! conn :local-message msg)))
 
 ;;;;;;;;;;
 
@@ -121,12 +119,8 @@
 (defn conn-dead? [conn]
   (ch/not-connected? (FSM/get-state conn)))
 
-(defn part-connections-p1 [conns]
- (let [mp (part-map conn-dead? conns)
-       ]
-   mp
-   ))
-(defn part-connections [conns]
+
+(defn partition-connections [conns]
  (let [mp (part-map conn-dead? conns)
         to-close (or (get mp true ) {})
         to-keep (or (get mp false ) {}) ]
@@ -135,7 +129,7 @@
 
 (defn clean-connections! [{:keys [connections-atom]}]
   (let [conns @connections-atom
-        [to-close to-keep] (part-connections conns)]
+        [to-close to-keep] (partition-connections conns)]
     (do
       (reset! connections-atom to-keep)
 

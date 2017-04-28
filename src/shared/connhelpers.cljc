@@ -67,10 +67,12 @@
                 :has-connected :is-disconnecting }
 
    :remote-socket-error {:is-connecting :is-disconnecting
-                         :has-connected :is-disconnecting }
+                         :has-connected :is-disconnecting
+                         :handling-local-msg :is-disconnecting }
 
    :remote-socket-closed {:is-connecting :is-disconnecting
-                          :has-connected :is-disconnecting }
+                          :has-connected :is-disconnecting
+                          :handling-local-msg :is-disconnecting }
 
    :connection-error {:is-connecting :is-disconnecting
                       :has-connected :is-disconnecting } })
@@ -121,6 +123,7 @@
           (if-let [msg (<! com-chan)]
 
             (do ;; yes
+                (t/info "**** LOCAL MESSAGE" msg)
                 (event! :local-message msg)
                 (recur))
 
