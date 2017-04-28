@@ -61,3 +61,7 @@
   (let [conns (-> system :connections)]
     (conns/clean-up! conns)))
 
+(defn clean-2 []
+  (let [conns (-> system :connections)]
+    (conns/clean-connections! conns)))
+

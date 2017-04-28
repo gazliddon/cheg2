@@ -95,7 +95,7 @@
       (->
         this
         (client/disconnect!)
-        (remove-connection-fsm this :fsm))
+        (remove-connection-fsm :fsm))
       this)))
 
 (defn keyword-uuid []

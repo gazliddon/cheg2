@@ -121,21 +121,29 @@
 (defn conn-dead? [conn]
   (ch/not-connected? (FSM/get-state conn)))
 
+(defn part-connections-p1 [conns]
+ (let [mp (part-map conn-dead? conns)
+       ]
+   mp
+   ))
 (defn part-connections [conns]
  (let [mp (part-map conn-dead? conns)
-        running (or (get true mp ) {})
-        closed (or (get false map) {}) ]
+        to-close (or (get mp true ) {})
+        to-keep (or (get mp false ) {}) ]
     (do
-      [running closed])))
+      [to-close to-keep])))
 
 (defn clean-connections! [{:keys [connections-atom]}]
   (let [conns @connections-atom
-        [running closed] (part-connections conns)]
+        [to-close to-keep] (part-connections conns)]
     (do
-      (reset! connections-atom running)
-      (doseq [[_ conn] closed] (c/stop conn))
+      (reset! connections-atom to-keep)
+
+      (doseq [[_ conn] to-close]
+        (c/stop conn))
+
       {:before (count conns)
-       :after (count closed) })))
+       :after (count to-keep) })))
 
 (defrecord Connections [connections-atom clock]
   c/Lifecycle
@@ -156,7 +164,7 @@
   IConnections
 
   (clean-up! [this]
-    (do
+    (comment do
       (let [stats (clean-connections! connections-atom) ]
         (println "before " (:before stats) " after " (:after stats))))
     nil)
