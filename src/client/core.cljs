@@ -1,7 +1,8 @@
 (ns client.core
   (:require
 
-    [shared.component.messagebus :as MB :refer [mk-message-bus] ]
+    [shared.component.messagebus :as MB ]
+    [shared.component.listeners :as MBL ]
 
     [client.audio :as AU]
     [client.game :as game]
@@ -35,10 +36,11 @@
     [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
 
   (:require-macros
-    [cljs.core.async.macros :refer [go go-loop]]))
+    [cljs.core.async.macros :as a :refer [go go-loop]]
+    [shared.macros :as m]))
 
 
-(declare start stop restart)
+(declare start stop restart ui-log! )
 
 
 (def config { :conn-config {:url  "ws://localhost:6502"
@@ -56,6 +58,9 @@
 
       (su/bidi-ch reader writer))))
 
+(def ui-listeners
+  {:ui-set-field #(println (str "set field! " %))
+   :ui-log #(println (str "logger! " %)) })
 
 (defrecord App [game]
 
@@ -65,9 +70,7 @@
     this)
 
   (stop [this]
-    this)
-
-  )
+    this))
 
 (defn mk-app []
   (map->App {}))
@@ -76,12 +79,15 @@
 
 (defn mk-game [config ]
 
-  (let [com-chan (chan)
-        messages (MB/mk-message-bus :type) ]
+  (let [com-chan (chan) ]
 
     (c/system-map
 
-      :messages messages
+      :messages (MB/mk-message-bus :type)
+
+      :ui-listener (c/using
+                     (MBL/mk-listeners ui-listeners )
+                     [:messages])
 
       :com-chan com-chan
 
@@ -109,8 +115,8 @@
       :app (c/using
              (map->App {})
              [:config
-              :game ])
-      )
+              :game
+              :ui-listener ]))
     )
   )
 
@@ -316,11 +322,7 @@
 (comment
  (go
   (def yy (<! xx))
-  (play-sound yy)
-  ))
-
-
-
+  (play-sound yy)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def reconciler
@@ -334,13 +336,16 @@
 (defn set-ui-game-state! [v]
   (set-ui-field! :game-state v))
 
-(defn main []
+(defn ui-log! [v]
+ (om/transact! reconciler `[( game/log {:payload ~v} )]) )
 
+(defn main []
   (let [app-el (gdom/getElement "app") ]
     (do
       (om/add-root! reconciler OmApp app-el))))
 
 (defn stop []
+
  (when @sys-atom
 
   (c/stop-system @sys-atom)

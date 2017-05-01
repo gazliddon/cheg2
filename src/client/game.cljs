@@ -145,6 +145,13 @@
 
                        :quit {:running-game :stopping-game} })
 
+(defn mk-to-remote-msg [type payload t]
+  {:type :to-remote :payload (mk-msg type payload t) })
+
+(defn send-to-remote-msg [{:keys [messages] } typ payload]
+  (let [msg (mk-to-remote-msg typ payload 0)]
+      (MB/message messages msg)))
+
 (defmulti game-state (fn [this ev payload] (:state ev)))
 
 (defmethod game-state :default [_ ev _]
@@ -152,25 +159,21 @@
 
 (defmethod game-state :starting-game
   [{:keys [state ] :as this} ev payload]
-  (t/info "starting game" ev)
-  (swap! state assoc :id 1)
+  (swap! state assoc :id (-> payload :payload :id))
   (fsm/event! this :done {}))
 
 (defmethod game-state :stopping-game
   [{:keys [state ] :as this} ev payload]
   (fsm/event! this :done {}))
 
-
 (defmethod game-state :running-game
   [{:keys [state ] :as this} ev payload])
 
 (defmethod game-state :doing-pong
   [{:keys [state messages] :as this} ev payload]
-  (let [reply {:type :to-remote :payload {:type :pong }}]
-    (do
-      ; (MB/message messages {:type :test :payload {}})
-      (MB/message messages  reply)
-      (fsm/event! this :done {})  )))
+  (do
+    (send-to-remote-msg this :pong (:payload payload))
+    (fsm/event! this :done {})  ))
 
 (defn add-listeners [{:keys [events com-chan messages] :as this}]
   (let [anim-ch (p/anim-ch events)
@@ -212,8 +215,13 @@
 (defmethod refresh :default [this state])
 (defmethod refresh :none [this state])
 
-(defn ui-msg [{:keys [messages] :as this} payload]
-  (MB/message messages {:type :ui :payload payload}))
+(defn ui-log [{:keys [messages] :as this} payload]
+  (let [msg {:type :ui-log :payload payload}]
+    (MB/message messages msg )))
+
+(defn ui-set-field! [{:keys [messages] :as this} k v]
+ (let [msg {:type :ui-set-field :payload {k v }}]
+    (MB/message messages msg )))
 
 (defrecord Game [started events system com-chan state fsm messages
                  client-connection ]
@@ -226,13 +234,13 @@
     (let [new-state (fsm/event! @fsm ev payload)]
       (do
         (when new-state
-          (ui-msg this {:type :state-change :event ev :payload payload}))
+          (ui-set-field! this :game-state new-state))
         this  ))) 
 
   IGame
 
   (on-network [this msg]
-    (fsm/event! this (:type msg) (:payload msg)))
+    (fsm/event! this (:type msg) msg))
 
   (on-update [this t ]
     (do

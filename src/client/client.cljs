@@ -141,7 +141,7 @@
           []
           (if-let [msg (<! to-remote-chan)]
             (do
-              (client/send! this msg)
+              (client/send! this (:payload msg ))
               (recur))
             (t/info "to-network sub closed")))
         this)))
