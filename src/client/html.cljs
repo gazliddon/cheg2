@@ -56,10 +56,9 @@
 
 (defn add-game-html! [game-el]
 
-  (let [wh [(.-offsetWidth game-el ) 500 ]
+  (let [wh [(.-offsetWidth game-el ) (.-offsetHeight game-el ) ]
         canvas-el (mk-canvas-element wh "canvas")
         ctx (.getContext canvas-el "2d") ]
-
     (do
       (gdom/removeNode (find-canvas))
       (gdom/appendChild game-el canvas-el)

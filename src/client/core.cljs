@@ -40,26 +40,16 @@
     [shared.macros :as m]))
 
 
-(declare start stop restart ui-log! )
+(declare start stop restart ui-log! set-ui-field!)
 
 
 (def config { :conn-config {:url  "ws://localhost:6502"
                             :ping-frequency 1000 }
              :html-id "game" })
 
-(defn mk-bidi-chan []
-  (let [reader (chan)
-        writer (chan) ]
-    (do
-      (go-loop
-        []
-        (when-let [m (<! writer)]
-          (>! writer m)))
-
-      (su/bidi-ch reader writer))))
-
 (def ui-listeners
-  {:ui-set-field #(println (str "set field! " %))
+  {:ui-set-field (fn [{:keys [key value]}]
+                   (set-ui-field! key value))
    :ui-log #(println (str "logger! " %)) })
 
 (defrecord App [game]
@@ -83,10 +73,13 @@
 
     (c/system-map
 
+      ;; Central message bus
       :messages (MB/mk-message-bus :type)
 
-      :ui-listener (c/using
-                     (MBL/mk-listeners ui-listeners )
+      ;; listens to the message bus and
+      ;; updates UI as and when needed
+      :ui-listeners (c/using
+                     (MBL/mk-listeners ui-listeners)
                      [:messages])
 
       :com-chan com-chan
@@ -111,12 +104,11 @@
                :events
                :system])
 
-
       :app (c/using
              (map->App {})
              [:config
               :game
-              :ui-listener ]))
+              :ui-listeners]))
     )
   )
 
@@ -330,8 +322,12 @@
     {:state app-state
      :parser (om/parser {:read reader-fn :mutate mutate-fn})}))
 
+(defn get-ui-field [k]
+  (get (@app-state :game-status ) k ))
+
 (defn set-ui-field! [k v]
-  (om/transact! reconciler `[(game/set-field {:field ~k :value ~v} )]))
+  (when (not= ( get-ui-field k ) v)
+    (om/transact! reconciler `[(game/set-field {:field ~k :value ~v} )])))
 
 (defn set-ui-game-state! [v]
   (set-ui-field! :game-state v))
@@ -347,7 +343,6 @@
 (defn stop []
 
  (when @sys-atom
-
   (c/stop-system @sys-atom)
 
   (doseq [c [:com-chan]]

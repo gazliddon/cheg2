@@ -6,6 +6,7 @@
 
 (defprotocol IStateMachine
   (event! [this ev payload])
+  (set-state! [this new-state])
   (get-state [this]))
 
 (defn- event->state [state-table state event]
@@ -31,12 +32,17 @@
                        } payload)))
       new-state))
 
+  (set-state! [this new-state]
+    (reset! state new-state))
+
   (get-state [this] @state))
 
 (defn mk-state-machine
-  
-  ([table dispatcher]
-   (->StateMachine table (atom :none) dispatcher)))
+  ([table dispatcher init-state]
+   (->StateMachine table (atom init-state) dispatcher))
+
+ ([table dispatcher]
+   (mk-state-machine table dispatcher :none)) )
 
 (defn- get-states
   "get a sequence of unique states in this state table"
@@ -48,19 +54,27 @@
     (flatten)
     (distinct)))
 
-(defn add-fsm [this fsm-key table dispatcher ]
-  (let [fsm-atom (atom nil) ]
-    (when-not (satisfies? IStateMachine this)
-      (t/error (type this) " does not satisfy IStateMachine")
-      (assert false))
+(defn add-fsm 
+  
+  ([this fsm-key table dispatcher init-state]
+    (let [fsm-atom (atom nil)]
 
-    (let [new-this (assoc this fsm-key fsm-atom) ]
-      (do
-        (reset! fsm-atom (mk-state-machine
-                           table
-                           (fn [ev payload]
-                             (dispatcher new-this ev payload))))
-        new-this))))
+      (when-not (satisfies? IStateMachine this)
+        (t/error (type this) " does not satisfy IStateMachine")
+        (assert false))
+
+      (let [new-this (assoc this fsm-key fsm-atom)
+            new-fsm (mk-state-machine
+                             table
+                             (fn [ev payload]
+                               (dispatcher new-this ev payload))
+                             init-state)]
+        (do
+          (reset! fsm-atom new-fsm)
+          new-this))))
+
+  ([this fsm-key table dispatcher ]
+   (add-fsm this fsm-key table dispatcher :none)))
 
 (defn remove-fsm [this fsm-key]
   (assoc this fsm-key nil))

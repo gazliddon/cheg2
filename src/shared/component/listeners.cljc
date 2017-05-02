@@ -20,7 +20,7 @@
       (do
         (func (:payload msg))
         (recur))
-      (println (str "topic chan " topic " closed")))))
+      (t/info  "topic chan " topic " closed"))))
 
 (defn- mk-listeners! [messages topic-list]
   (->

@@ -30,9 +30,6 @@
     [servalan.macros :as m :refer [dochan]]
     [cljs.core.async.macros :as a :refer [go go-loop]]))
 
-
-
-
 (def player (atom {:pos [10 10]}))
 
 (def k->dir {:z [-1 0]
@@ -132,18 +129,25 @@
   (on-update [_ t])
   (on-message [_ msg] ))
 
-(def game-state-table {:hello-from-server {:none :starting-game}
+(def game-state-table {:hello-from-server {:waiting :starting-game}
 
                        :network-error {:running-game :doing-network-error}
 
                        :done {:starting-game :running-game
-                              :stopping-game :none
+                              :stopping-game :not-running
                               :doing-pong :running-game
-                              :doing-network-error :none}
+                              :doing-network-error :not-running}
 
                        :ping {:running-game :doing-pong }
 
                        :quit {:running-game :stopping-game} })
+
+(def not-running-states #{:not-running })
+
+(defn- is-not-running? [this]
+  (contains?  not-running-states (fsm/get-state this )))
+
+(defn- is-running? [this] (not (is-not-running? this)))
 
 (defn mk-to-remote-msg [type payload t]
   {:type :to-remote :payload (mk-msg type payload t) })
@@ -173,7 +177,7 @@
   [{:keys [state messages] :as this} ev payload]
   (do
     (send-to-remote-msg this :pong (:payload payload))
-    (fsm/event! this :done {})  ))
+    (fsm/event! this :done {})))
 
 (defn add-listeners [{:keys [events com-chan messages] :as this}]
   (let [anim-ch (p/anim-ch events)
@@ -220,7 +224,7 @@
     (MB/message messages msg )))
 
 (defn ui-set-field! [{:keys [messages] :as this} k v]
- (let [msg {:type :ui-set-field :payload {k v }}]
+ (let [msg {:type :ui-set-field :payload {:key k :value v }}]
     (MB/message messages msg )))
 
 (defrecord Game [started events system com-chan state fsm messages
@@ -230,23 +234,21 @@
 
   (get-state [this ] (fsm/get-state @fsm))
 
-  (event! [this ev payload]
-    (let [new-state (fsm/event! @fsm ev payload)]
-      (do
-        (when new-state
-          (ui-set-field! this :game-state new-state))
-        this  ))) 
+  (event! [this ev payload] (fsm/event! @fsm ev payload))
 
   IGame
 
   (on-network [this msg]
-    (fsm/event! this (:type msg) msg))
+    )
 
   (on-update [this t ]
     (do
-      (case (fsm/get-state this)
-        :running-game (print! system t)
-        (print-waiting! system t))))
+      (if (is-running? this)
+        (do
+          (ui-set-field! this :game-state (fsm/get-state this)) 
+          (print! system t))
+        (do
+          (print-waiting! system t)))))
 
   (on-message [_ msg])
 
@@ -261,7 +263,7 @@
                    (add-listeners))]
       (do
 
-        ;; No idea why I need this, first message seems to be lost
+        ; ;; No idea why I need this, first message seems to be lost
 
         (MB/message messages {:type :test :payload {}})
 
