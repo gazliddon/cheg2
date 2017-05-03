@@ -7,6 +7,7 @@
 
 (defprotocol IRender
   (dims [_])
+  (set-transform! [_ a b c d e f])
   (resize! [_ dims])
   (reset-transform! [this])
   (clear-all! [this col])

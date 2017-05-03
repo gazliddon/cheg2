@@ -1,31 +1,31 @@
 (ns client.client
   (:require
-    [shared.connhelpers :as ch :refer [create-connection-process
-                                add-connection-fsm
-                                remove-connection-fsm ]]
+   [shared.connhelpers :as ch :refer [create-connection-process
+                                      add-connection-fsm
+                                      remove-connection-fsm ]]
 
-    [shared.fsm :as FSM]
+   [shared.fsm :as FSM]
 
-    [shared.component.messagebus :as MB :refer [mk-message-bus] ]
+   [shared.component.messagebus :as MB :refer [mk-message-bus] ]
 
-    [shared.messages :refer [mk-msg]]
+   [shared.messages :refer [mk-msg]]
 
-    [client.utils :as cu]
+   [client.utils :as cu]
 
-    [taoensso.timbre :as t
-     :refer-macros [log  trace  debug  info  warn  error  fatal  report ]]
+   [taoensso.timbre :as t
+    :refer-macros [log  trace  debug  info  warn  error  fatal  report ]]
 
 
-    [clojure.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
-    [client.html :as html]
-    [shared.protocols.clientconnection :as client]
-    [com.stuartsierra.component :as c]
-    [chord.client :as wsockets  ])
+   [clojure.core.async :refer [chan <! >! put! close! timeout poll!] :as a]
+   [client.html :as html]
+   [shared.protocols.clientconnection :as client]
+   [com.stuartsierra.component :as c]
+   [chord.client :as wsockets  ])
 
   (:require-macros
-    ; [cljs.spec.test :as st ]
-    [client.macros :as m :refer [dochan chandler]]
-    [cljs.core.async.macros :as a :refer [go go-loop]]))
+                                        ; [cljs.spec.test :as st ]
+   [client.macros :as m :refer [dochan chandler]]
+   [cljs.core.async.macros :as a :refer [go go-loop]]))
 
 (enable-console-print!)
 
@@ -43,7 +43,6 @@
     (send-from-nw-msg this {:type :disconnected}))
 
 (defmulti new-state (fn [_ ev _] (:state ev)))
-
 (defmethod new-state :handling-local-msg
   [{:keys [ws-atom] :as this} ev payload]
   (do
@@ -66,7 +65,7 @@
 (defmethod new-state :is-connecting
   [{:keys [ws-atom com-chan kill-chan] :as this} ev url]
   (go
-    (let [ch (wsockets/ws-ch url) 
+    (let [ch (wsockets/ws-ch url)
           {:keys [ws-channel error] :as k} (<! ch)
           event!  (fn [ev payload] (FSM/event! this ev payload)) ]
 
@@ -127,10 +126,10 @@
   c/Lifecycle
 
   (start [this]
-    (let [to-remote-chan (MB/sub-topic messages :to-remote (chan)) 
-          
+    (let [to-remote-chan (MB/sub-topic messages :to-remote (chan))
+
           this (-> (c/stop this)
-                   (assoc 
+                   (assoc
                      :to-remote-chan to-remote-chan
                      :started? true
                      :kill-chan (chan)
@@ -157,11 +156,9 @@
     (assoc this
            :to-remote-chan nil
            :started? nil
-           :kill-chan nil    
+           :kill-chan nil
            :ws-atom nil))))
 
 (defn mk-client-component [] (map->ClientComponent {}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-

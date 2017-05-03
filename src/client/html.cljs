@@ -221,26 +221,29 @@
   c/Lifecycle
 
   (start [this]
+    (if-not started
+      (let [this (c/stop this)
+            game-el (gdom/getElement id)
+            game-html (add-game-html! game-el)]
 
-    (let [this (c/stop this)
-          game-el (gdom/getElement id)
-          game-html (add-game-html! game-el)]
+        (assoc this
+               :started true
+               :ctx (:ctx game-html)
+               :wh-atom (atom (:wh game-html))   
+               :game-el game-el)) 
 
-      (assoc this
-             :started true
-             :ctx (:ctx game-html)
-             :wh-atom (atom (:wh game-html))   
-             :game-el game-el)))
+      this))
 
   (stop [this]
-    (when started
-      (remove-game-html! game-el))
-
-    (assoc this
-           :started nil
-           :ctx nil
-           :wh-atom nil
-           :game-el nil))
+    (if started
+      (do
+        (remove-game-html! game-el) 
+        (assoc this
+               :started nil
+               :ctx nil
+               :wh-atom nil
+               :game-el nil))
+      this))
 
   p/IRender
 
@@ -250,9 +253,13 @@
 
   (dims [_] @wh-atom)
 
+  (set-transform! [this a b c d e f]
+    (do
+      (.setTransform ctx a b c d e f)
+      nil))
+
   (reset-transform! [this]
-    (.resetTransform ctx 1 0 0 1 0 0)
-    nil)
+    (p/set-transform! this 1 0 0 1 0 0))
 
   (spr! [this rimg [sx sy sw sh] [x y] [w h] ]
     (do
@@ -265,19 +272,18 @@
     (do
       (.save ctx)
       (set! (.-fillStyle ctx) (apply u/to-color color))
-      (.resetTransform ctx 1 0 0 1 0 0)
       (.fillRect ctx x y w h)
       (.restore ctx)
-      )  
-    nil) 
+      nil ))
 
   (clear-all! [this color]
-    (p/square! this [0 0] (p/dims this) color))
+    (do
+      (p/reset-transform! this)
+      (p/square! this [0 0] (p/dims this) color)))
 
   p/ILog
   (log [_ v]
-    (u/log-js v)) 
-  )
+    (u/log-js v)) )
 
 (defn mk-html-component [id]
   (map->HtmlComponent {:id id}))

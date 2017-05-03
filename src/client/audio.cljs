@@ -132,4 +132,117 @@
 
 
 
+(comment
 
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+  (defn decode-audio-data
+    [context data]
+    (let [ch (chan)]
+      (.decodeAudioData context
+                        data
+                        (fn [buffer]
+                          (go (>! ch buffer)
+                              (close! ch))))
+      ch))
+
+  (defonce cache (atom {}))
+
+  (defn get-audio [url]
+    (let [ch (chan)]
+      (doto (goog.net.XhrIo.)
+        (.setResponseType "arraybuffer")
+        (.addEventListener goog.net.EventType.COMPLETE
+                           (fn [event]
+                             (let [res (-> event .-target .getResponse)]
+                               (go (>! ch res)
+                                   (close! ch)))))
+        (.send url "GET"))
+      ch))
+
+
+  (defonce AudioContext (or (.-AudioContext js/window)
+                            (.-webkitAudioContext js/window)))
+
+  (defonce context (AudioContext.))
+
+  (defonce cache (atom {}))
+
+  (defn load-audio-buffer-async
+    [url]
+    (if-let [dat (get @cache url)]
+      (go
+        dat)
+      (go
+        (let [response (<! (get-audio url))
+              buffer (<! (decode-audio-data context response)) ]
+          (do
+            (swap! cache assoc url buffer)
+            buffer)))))
+
+  (defn make-audio-source [buffer]
+    (doto (.createBufferSource context)
+      (aset "buffer" buffer)) )
+
+  (defn connect
+    ([a b]
+     (do
+       (.connect a b)
+       b))
+    ([a]
+     (connect a (.-destination context))))
+
+  (defprotocol ISound
+    (play-sound [_])
+    (stop-sound [_])
+    (set-volume [_ _])
+    (fade-out [_ _]))
+
+  (defrecord Sound [buffer vol source-atom gain-node]
+    ISound
+
+    (play-sound [this]
+      (let [ source (make-audio-source buffer) ]
+        (do
+          (stop-sound this)
+          (->
+            (connect source gain-node)
+            (connect))
+          ; (set! (.-loop source) true)
+          (set! (.-onended source )
+                (fn []
+                  ))
+          (.start source)
+          (reset! source-atom source)
+          )))
+
+    (stop-sound [this]
+      (when @source-atom
+        (.stop @source-atom)
+        (reset! source-atom nil)))
+
+    (set-volume [this v]
+      (set! (-> gain-node .-gain .-value) v))
+
+    (fade-out [this t]
+
+      ))
+
+  (defn mk-sound [url]
+    (let [gain-node (.createGain context)
+          buff-chan (load-audio-buffer-async url) ]
+      (go
+        (map->Sound {:buffer (<! buff-chan)
+                     :source-atom (atom nil)
+                     :gain-node gain-node
+                     :vol gain-node }))))
+
+(def xx (mk-sound "audio/ping.wav"))
+
+(comment
+  (go
+    (def yy (<! xx))
+    (play-sound yy)))
+
+)

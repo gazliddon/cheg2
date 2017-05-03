@@ -65,12 +65,11 @@ h3 {
 .log, .log p {
     background: rgb(0, 0, 255 );
     color: #aaa;
-    font-size: 80%;
+    font-size: 100%;
 
     font-family: 'Share Tech Mono', monospace;
-    margin: 0.2em;
+    margin: 0.5em;
 }
-
 
 /* font-family: 'Roboto', sans-serif; */
 /* font-family: 'Share Tech Mono', monospace; */
@@ -97,7 +96,6 @@ h3 {
     .footer {
         text-align: center;
     }
-
 }
 
 

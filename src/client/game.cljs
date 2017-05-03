@@ -49,7 +49,6 @@
         res))
     (reduce player key-coll)))
 
-
 (comment defn update! [io timer ]
          (let [renderer (renderer io)
                now (/ ( now timer ) 1000    )
@@ -94,7 +93,6 @@
 
 (def objs (atom []))
 
-
 (defn print-waiting! [renderer t]
   (let [red (* 255 (cos01 (*  t 10)))
         col [red 0 255]
@@ -108,21 +106,35 @@
 
 (defn print! [renderer t]
   (let [spr-bank (sprdata/get-bank :pickups)
-      group (sprdata/get-group :pickups :pickups)
-      rimg (:img spr-bank)
-      scale 2 ]
+        group (sprdata/get-group :pickups :pickups)
+        rimg (:img spr-bank)
+        [w h] (p/dims renderer)
+        desired 320
+        scale (/ w desired) ]
+    (do
+      (p/clear-all! renderer [10 10 10])
 
-    (doto renderer
-      (p/clear-all! [10 10 10]))
+      (p/set-transform! renderer scale 0 0 scale 0 0)
 
-    (doseq [n (range 18 )]
-      (let [ypos (-> (+ t (/ n 20))
-                     (* 8)
-                     cos01
-                     (* 30)
-                     (+ 10))]
-        
-      (p/spr! renderer rimg (nth group n) [(* n 16 scale) ypos] [32 32])))))
+      (let [t (* t 1.001)]
+        (doseq [n (range 28 )]
+          (let [ypos (-> (+ t (/ n 20))
+                         (* 8)
+                         cos01
+                         (* 30)
+                         (+ 50))]
+            (p/spr! renderer rimg (nth group n) [(* n 16) ypos] [16 16])))  )
+
+
+      (doseq [n (range 28 )]
+        (let [ypos (-> (+ t (/ n 20))
+                       (* 8)
+                       cos01
+                       (* 30)
+                       (+ 10))]
+
+          (p/spr! renderer rimg (nth group n) [(* n 16) ypos] [16 16]))) 
+      )))
 
 (defprotocol IGame
   (on-network [_ msg])
@@ -239,6 +251,8 @@
   IGame
 
   (on-network [this msg]
+    (fsm/event! this (:type msg) msg)
+    (println msg)
     )
 
   (on-update [this t ]
@@ -250,7 +264,8 @@
         (do
           (print-waiting! system t)))))
 
-  (on-message [_ msg])
+  (on-message [_ msg]
+    )
 
   c/Lifecycle
 
@@ -259,12 +274,10 @@
     (let [this (-> (c/stop this)
                    (assoc :started true
                           :state (atom nil))
-                   (add-fsm :fsm game-state-table game-state )
+                   (add-fsm :fsm game-state-table game-state :waiting )
                    (add-listeners))]
       (do
-
         ; ;; No idea why I need this, first message seems to be lost
-
         (MB/message messages {:type :test :payload {}})
 
         (client/connect! client-connection)
