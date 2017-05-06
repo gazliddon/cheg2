@@ -73,7 +73,9 @@
   (start [this]
     (if-not started
       (let [game-el (gdom/getElement id)
+
             game-html (add-game-html! game-el)
+
             init {:started true
                   :ctx (:ctx game-html)
                   :wh-atom (atom (:wh game-html))   
@@ -123,11 +125,7 @@
   (clear-all! [this color]
     (do
       (p/reset-transform! this)
-      (p/square! this [0 0] (p/dims this) color)))
-
-  p/ILog
-  (log [_ v]
-    (u/log-js v)) )
+      (p/square! this [0 0] (p/dims this) color))))
 
 (defn mk-html-component [id]
   (map->HtmlComponent {:id id}))

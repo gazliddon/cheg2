@@ -18,6 +18,4 @@
   (anim-ch [_])
   (events-ch [this]))
 
-(defprotocol ILog
-  (log [this m ]))
 
