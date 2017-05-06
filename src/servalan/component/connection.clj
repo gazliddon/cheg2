@@ -31,7 +31,7 @@
 (defmethod new-state :handling-remote-msg
   [{:keys [com-chan clock] :as this} _ {:keys [type payload] :as msg}]
   (do
-    (t/info "handling remote msg" msg )  
+    (t/info "handling remote msg" msg )
     (when (= type :pong)
       (let [t (clock/get-time clock )
             ot (:ping-time payload ) ]
@@ -109,7 +109,7 @@
       this)))
 
 (defn mk-connection [req clock]
-  (let [com-chan (a/chan)  
+  (let [com-chan (a/chan)
         ws-channel (:ws-channel req) ]
 
     (->

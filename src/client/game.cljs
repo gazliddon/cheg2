@@ -1,6 +1,8 @@
 (ns client.game
 
   (:require
+    [shared.component.keystates :as KS]
+
     [shared.protocols.clientconnection :as client]
     [shared.fsm :as fsm :refer [add-fsm remove-fsm]]
     [shared.component.messagebus :as MB ]
@@ -252,7 +254,6 @@
 
   (on-network [this msg]
     (fsm/event! this (:type msg) msg)
-    (println msg)
     )
 
   (on-update [this t ]
@@ -265,6 +266,7 @@
           (print-waiting! system t)))))
 
   (on-message [_ msg]
+    (println msg)
     )
 
   c/Lifecycle
@@ -278,7 +280,7 @@
                    (add-listeners))]
       (do
         ; ;; No idea why I need this, first message seems to be lost
-        (MB/message messages {:type :test :payload {}})
+        ; (MB/message messages {:type :test :payload {}})
 
         (client/connect! client-connection)
         this)))

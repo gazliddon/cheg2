@@ -13,6 +13,8 @@
                  ; [org.clojure/test.check "0.9.0"]
                  ; [cljs-ajax "0.5.9"]
 
+                 [compojure "1.6.0"]
+
                  [org.clojure/clojurescript "1.9.229"]
 
                  [sablono "0.2.3"]

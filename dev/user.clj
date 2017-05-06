@@ -4,7 +4,7 @@
     [servalan.main :as main]
     [servalan.component.connections :as conns]
     [servalan.component.server :as SERVER]
-    [com.stuartsierra.component :as component] 
+    [com.stuartsierra.component :as component]
     [clojure.tools.namespace.repl :refer (refresh)]
     [figwheel-sidecar.repl-api :as f])
   (:gen-class))
@@ -54,8 +54,6 @@
   (refresh :after 'user/go))
 
 (defn get-conns [] (-> system :connections) )
-
 (defn stats [] (conns/print-stats (get-conns)))
 (defn clean [] (conns/clean-up! (get-conns)))
-
 

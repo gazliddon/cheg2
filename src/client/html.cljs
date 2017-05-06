@@ -1,27 +1,21 @@
 (ns client.html
   (:require
+    [shared.component.keystates :as KS]
+    [shared.component.messagebus :as MB]
+
     [sablono.core :as html :refer-macros [html]]
     [shared.utils :as su]
     [client.utils :as u]
     [com.stuartsierra.component :as c]
     [client.protocols :as p] 
 
-    [goog.events :as events]
     [goog.dom :as gdom]
 
-    [goog.object :as gobject]
-
-    ; [hipo.core              :as hipo  :include-macros true]
-    ; [dommy.core             :as dommy :include-macros true]   
-
-    [cljs.core.async :refer [chan <! >! put! close! timeout poll!] :as a])
+    [cljs.core.async :as a])
 
   (:require-macros 
     [servalan.macros :as m]
-    [cljs.core.async.macros :refer [go go-loop]])
-
-  )
-
+    [cljs.core.async.macros :as a ]))
 
 (enable-console-print!)
 
@@ -68,181 +62,30 @@
        :html canvas-el
        :wh wh })))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Events
-
-(defn mk-msg [typ payload]
-  {:type typ
-   :payload payload })
-
-(def keyup-events (.-KEYUP events/EventType))
-(def keydown-events (.-KEYDOWN events/EventType))
-(def resize-events (.-RESIZE events/EventType))
-(def close-window-events (.-BEFOREUNLOAD events/EventType))
-
-(def deaf! events/removeAll)
-
-(defn listen!
-  ([ev xf] 
-   (let [ch (chan 1 xf)]
-     (events/listen js/window ev #(put! ch %))
-     ch))
-  ([ev] 
-   (listen! ev (map identity))))
-
-;; listen to a type of key event
-(defn ev->key-event [ev id]
-  (mk-msg :key {:event id
-                :keypres (-> ev
-                             (.-event_)
-                             (.-key)
-                             (keyword)) }))
-
-(defn ev->resizer [ev]
-  (mk-msg :resize (u/get-win-dims)))
-
-(def html-events
-  [
-   {:event keydown-events
-    :xf (map #(ev->key-event % :keydown)) }
-
-   {:event keyup-events
-    :xf (map #(ev->key-event % :keyup)) } 
-
-   {:event resize-events
-    :xf (map ev->resizer) } ] )
-
-(defn setup-event [{:keys [event xf]}]
-  (deaf! event)
-  (listen! event xf))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn is-valid? [{:keys [previous now] :as c}]
-  (not (or (nil? previous) (nil? now))))
-
-(defn time-passed [{:keys [previous now] :as c}]
-  (if (is-valid? c)
-    (- now previous)
-    0))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-(defn animate! [cbfunc]
-  (when (cbfunc)
-    (.requestAnimationFrame js/window #(animate! cbfunc))))
-
-
-(defn mk-animator-channel
-
-  "returns a bi-directional channel
-  that sends messages at the refresh rate"
-
-  []
-
-  (let [running? (atom true)
-
-        reader (a/chan (a/dropping-buffer 1))
-
-        writer (chan)
-
-        stop-fn (fn [] (reset! running? false))
-
-        params  {:on-close stop-fn}
-
-        bi-chan (su/bidi-ch reader writer params) ]
-    (do
-
-      ;; Close if anything written to me
-      (go
-        (<! writer)
-        (close! bi-chan))
-
-      ;; put a value onto the channel every
-      ;; refresh until we're not running any more
-      (animate! (fn []
-                  (when @running?
-                    (put! reader :anim)
-                    true)))
-
-      bi-chan)))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defrecord HtmlEventsComponent [started html-events-channels anim-ch ev-ch]
-  c/Lifecycle
-
-  (start [this]
-    (let [this (c/stop this)
-          html-events-channels (map setup-event html-events) ]
-
-      (assoc this
-             :started true
-             :anim-ch (mk-animator-channel)
-             :ev-ch (a/merge html-events-channels)
-             :html-events-channels html-events-channels)))
-
-  (stop [this]
-
-
-    (do
-      (when started
-        ;; Anim-ch self closes when a value
-        (put! anim-ch :stop)
-
-        ;; ev-ch will automatically close after source
-        ;; channels closes
-        (doseq [c html-events-channels]
-          (close! c)) )
-
-      (assoc this
-             :started nil
-             :html-events-channels nil
-             :anim-ch  nil
-             :ev-ch nil)))
-
-  p/IEvents
-
-  (anim-ch [_]
-    anim-ch)
-
-  (events-ch [_]
-    ev-ch))
-
-(defn mk-html-events-component []
-  (map->HtmlEventsComponent {}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; handles building html, rendering, logging
 
-(defrecord HtmlComponent [started ctx id wh-atom game-el]
 
+(defrecord HtmlComponent [started ctx id wh-atom game-el]
   c/Lifecycle
 
   (start [this]
     (if-not started
-      (let [this (c/stop this)
-            game-el (gdom/getElement id)
-            game-html (add-game-html! game-el)]
-
-        (assoc this
-               :started true
-               :ctx (:ctx game-html)
-               :wh-atom (atom (:wh game-html))   
-               :game-el game-el)) 
-
+      (let [game-el (gdom/getElement id)
+            game-html (add-game-html! game-el)
+            init {:started true
+                  :ctx (:ctx game-html)
+                  :wh-atom (atom (:wh game-html))   
+                  :game-el game-el } ]
+        (su/add-members :to-nil init))
       this))
 
   (stop [this]
     (if started
       (do
-        (remove-game-html! game-el) 
-        (assoc this
-               :started nil
-               :ctx nil
-               :wh-atom nil
-               :game-el nil))
+        (remove-game-html! game-el)
+        (su/nil-members this :to-nil))
       this))
 
   p/IRender

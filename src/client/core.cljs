@@ -3,6 +3,7 @@
 
     [shared.component.messagebus :as MB ]
     [shared.component.listeners :as MBL ]
+    [shared.component.keystates :as KS]
 
     [client.audio :as AU]
     [client.game :as game]
@@ -24,7 +25,10 @@
 
     [shared.fsm :as fsm]
     [client.protocols :as p]
-    [client.html :refer [mk-html-component mk-html-events-component]]
+
+    [client.html :refer [mk-html-component]]
+    [client.htmlevents :refer [mk-html-events-component]]
+
     [client.utils :refer [ch->coll cos cos01] :as u]
 
     [client.keys :as k]
@@ -72,12 +76,12 @@
   (let [com-chan (chan) ]
 
     (c/system-map
-
       ;; Central message bus
       :messages (MB/mk-message-bus :type)
 
       ;; listens to the message bus and
       ;; updates UI as and when needed
+
       :ui-listeners (c/using
                      (MBL/mk-listeners ui-listeners)
                      [:messages])
@@ -86,9 +90,14 @@
 
       :config config
 
+      :key-states (KS/mk-keystates)
+
       :system (mk-html-component (:html-id config))
 
-      :events (mk-html-events-component)
+      :events (c/using 
+                (mk-html-events-component)
+                [:key-states
+                 :messages])
 
       :client-connection (c/using
                            (mk-client-component )
@@ -102,15 +111,14 @@
                :config
                :messages
                :events
-               :system])
+               :system
+               :key-states ])
 
       :app (c/using
              (map->App {})
              [:config
               :game
-              :ui-listeners]))
-    )
-  )
+              :ui-listeners]))))
 
 (defonce sys-atom (atom nil))
 
@@ -195,12 +203,11 @@
                [:p (str "Game state: " (-> game-state name str) )]
 
                (case game-state
-                 :stopped (mk-button this "Start" start)
+                 :stopped      (mk-button this "Start" start)
                  :running-game (mk-button this "Stop" stop)
-                 :waiting (mk-button this "Stop" stop)
-                 :connecting (mk-button this "Connecting" restart)
-                 (mk-button this "" identity)) ]
-              ))))
+                 :waiting      (mk-button this "Stop" stop)
+                 :connecting   (mk-button this "Connecting" restart)
+                 (mk-button this "" identity)) ]))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
