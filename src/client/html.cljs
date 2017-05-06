@@ -78,7 +78,8 @@
                   :ctx (:ctx game-html)
                   :wh-atom (atom (:wh game-html))   
                   :game-el game-el } ]
-        (su/add-members :to-nil init))
+
+        (su/add-members this :to-nil init))
       this))
 
   (stop [this]

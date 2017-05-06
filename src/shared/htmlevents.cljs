@@ -145,31 +145,36 @@
   c/Lifecycle
 
   (start [this]
-    (let [this (c/stop this)
-          html-events-channels (map setup-event html-events)
-          init  { :started true
-                 :anim-ch (mk-animator-channel)
-                 :ev-ch (a/merge html-events-channels)
-                 :html-events-channels html-events-channels } ]
-      (->
-        (add-key-events! this)
-        (su/add-members :to-nil init) )))
+    (if-not started
+      (let [this (c/stop this)
+            html-events-channels (map setup-event html-events)
+            init  {:started true
+                   :anim-ch (mk-animator-channel)
+                   :ev-ch (a/merge html-events-channels)
+                   :html-events-channels html-events-channels } ]
+        (->
+          (add-key-events! this)
+          (su/add-members :to-nil init)))  
+      )
+    this)
 
   (stop [this]
-    (do
-      (when started
+    (if started
+      (do
         ;; Anim-ch self closes when a value
         (a/put! anim-ch :stop)
 
         ;; ev-ch will automatically close after source
         ;; channels closes
         (doseq [c html-events-channels]
-          (a/close! c)) )
+          (a/close! c))
 
-      (->
-        this
-        (remove-key-events!)
-        (su/nil-members :to-nil))))
+        (->
+          this
+          (remove-key-events!)
+          (su/nil-members :to-nil))  
+        )
+      this))
 
   p/IEvents
 
