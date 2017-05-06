@@ -2,6 +2,7 @@
   (:require
     [taoensso.timbre :as t ]
 
+    [shared.utils :as su]
 
     [com.stuartsierra.component :as c]
 
@@ -30,30 +31,29 @@
                        pub-chan
                        mult
                        pub-bus
-                       ]
+                       started?  ]
    c/Lifecycle
 
    (start [this]
-     (let [tap-chan (chan 1 xf)
-           pub-chan (chan 1 xf)
-           mult (a/mult tap-chan)
-           pub-bus (a/pub pub-chan :type) ]
-       (->
-         (c/stop this)
-         (assoc :pub-chan pub-chan
-                :tap-chan tap-chan
-                :mult mult
-                :pub-bus pub-bus))))
+     (if-not started?
+       (let [tap-chan (chan 1 xf)
+             pub-chan (chan 1 xf) ]
+
+         (su/add-members this :started?
+                         {:pub-chan pub-chan
+                          :tap-chan tap-chan
+                          :mult (a/mult tap-chan)
+                          :pub-bus (a/pub pub-chan :type)})))
+     this)
 
    (stop [this]
-     (when pub-chan
-       (a/close! tap-chan)
-       (a/close! pub-chan))
-     (-> this
-         (assoc :pub-chan nil
-                :tap-chan nil
-                :mult nil
-                :pub-bus nil)))
+     (if started?
+
+       (do
+         (a/close! tap-chan)
+         (a/close! pub-chan) 
+         (su/nil-members this :started?))
+       this))
 
    IMessageBus
 

@@ -15,7 +15,6 @@
   (square! [this xy wh col]))
 
 (defprotocol IEvents
-  (anim-ch [_])
-  (events-ch [this]))
+  (anim-ch [_]))
 
 

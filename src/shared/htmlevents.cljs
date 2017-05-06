@@ -28,87 +28,31 @@
 
 (def deaf! events/removeAll)
 
-(defn listen!
-  ([ev xf]
-   (let [ch (a/chan 1 xf)]
-     (events/listen js/window ev #(a/put! ch %))
-     ch))
-  ([ev]
-   (listen! ev (map identity))))
-
-;; listen to a type of key event
-(defn ev->key-event [ev id]
-  (mk-msg :key {:event id
-                :keypress (-> ev
-                             (.-event_)
-                             (.-key)
-                             (keyword)) } 0))
-
-(defn ev->resizer [ev]
-  (mk-msg :resize (u/get-win-dims) 0) )
-
-(def html-events
-  [
-   ; {:event keydown-events
-   ;  :xf (map #(ev->key-event % :keydown)) }
-
-   ; {:event keyup-events
-   ;  :xf (map #(ev->key-event % :keyup)) }
-
-   {:event resize-events
-    :xf (map ev->resizer) } ])
-
-(defn setup-event [{:keys [event xf]}]
-  (deaf! event)
-  (listen! event xf))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn is-valid? [{:keys [previous now] :as c}]
-  (not (or (nil? previous) (nil? now))))
-
-(defn time-passed [{:keys [previous now] :as c}]
-  (if (is-valid? c)
-    (- now previous)
-    0))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn animate! [cbfunc]
   (when (cbfunc)
     (.requestAnimationFrame js/window #(animate! cbfunc))))
 
-(defn mk-animator-channel
+(defn vsync-events
+  [messages]
 
-  "returns a bi-directional channel
-  that sends messages at the refresh rate"
-
-  []
-
-  (let [running? (atom true)
-
-        reader (a/chan (a/dropping-buffer 1))
-
-        writer (a/chan)
-
-        stop-fn (fn [] (reset! running? false))
-
-        params  {:on-close stop-fn}
-
-        bi-chan (su/bidi-ch reader writer params) ]
+  (let [kill-chan (a/chan)
+        running? (atom true) ]
     (do
-
       ;; Close if anything written to me
       (a/go
-        (a/<! writer)
-        (a/close! bi-chan))
+        (a/<! kill-chan)
+        (reset! running? false)
+        (a/close! kill-chan))
 
       ;; put a value onto the channel every
       ;; refresh until we're not running any more
       (animate! (fn []
                   (when @running?
-                    (a/put! reader :anim)
-                    true)))
+                    (MB/message messages {:type :vsync :payload {}}))))
 
-      bi-chan)))
+      kill-chan)))
 
 (defn key-listen-with-callback! [ev func]
   (deaf! ev)
@@ -120,69 +64,43 @@
 (defn mk-input-msg [type payload t]
   {:type :input :payload (mk-msg type payload t) })
 
-(defn set-state! [{:keys [key-states messages] :as this} k v]
+(defn set-state! [key-states messages k v]
   (do
     (KS/set-state! key-states k v)
-
     (let [ks (KS/get-state key-states k) ]
       (MB/message messages (mk-input-msg :key ks 0)))))
 
-(defn add-key-events! [{:keys [ key-states ] :as this}]
+(defn add-key-events! [key-states messages]
   (do
-    (key-listen-with-callback! keyup-events #(set-state! this % false) )
-    (key-listen-with-callback! keydown-events #(set-state! this % true) )
-    this ))
+    (key-listen-with-callback! keyup-events #(set-state! key-states messages % false) )
+    (key-listen-with-callback! keydown-events #(set-state! key-states messages % true) )))
 
-(defn remove-key-events! [this]
+(defn remove-key-events! []
   (do
     (deaf! keyup-events)
-    (deaf! keydown-events)
-    this ))
+    (deaf! keydown-events)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord HtmlEventsComponent [key-states started html-events-channels anim-ch ev-ch]
+(defrecord HtmlEventsComponent [started? messages key-states kill-ch ]
   c/Lifecycle
 
   (start [this]
-    (if-not started
-      (let [this (c/stop this)
-            html-events-channels (map setup-event html-events)
-            init  {:started true
-                   :anim-ch (mk-animator-channel)
-                   :ev-ch (a/merge html-events-channels)
-                   :html-events-channels html-events-channels } ]
-        (->
-          (add-key-events! this)
-          (su/add-members :to-nil init)))  
-      )
+    (if-not started?
+      (do
+        (add-key-events! key-states messages)
+        (su/add-members this :started? { :kill-ch (vsync-events messages)})))
     this)
 
   (stop [this]
-    (if started
+    (if started?
       (do
-        ;; Anim-ch self closes when a value
-        (a/put! anim-ch :stop)
+        (a/put! kill-ch :stop)
+        (remove-key-events!)
+        (su/nil-members this :started?))
 
-        ;; ev-ch will automatically close after source
-        ;; channels closes
-        (doseq [c html-events-channels]
-          (a/close! c))
-
-        (->
-          this
-          (remove-key-events!)
-          (su/nil-members :to-nil))  
-        )
       this))
-
-  p/IEvents
-
-  (anim-ch [_]
-    anim-ch)
-
-  (events-ch [_]
-    ev-ch))
+  )
 
 (defn mk-html-events-component []
   (map->HtmlEventsComponent {}))

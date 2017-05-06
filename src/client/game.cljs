@@ -195,10 +195,8 @@
 
 (defn add-listeners [{:keys [events com-chan messages] :as this}]
   (let [anim-ch (p/anim-ch events)
-        ev-ch (p/events-ch events)
         from-remote-chan (MB/sub-topic messages :from-remote (chan)) ]
     (do
-
       (t/info "listening for remote messages")
 
       (go-loop
@@ -208,15 +206,6 @@
             (on-network this (:payload msg))
             (recur))
           (t/info "from remote channel closed")))
-
-      (t/info "listening for html events")
-      (go-loop
-        []
-        (if-let [msg (<! ev-ch)]
-          (do
-            (on-message this msg)
-            (recur))
-          (t/info "html events chan closed")))
 
       (t/info "listening for vblank events")
       (go-loop
