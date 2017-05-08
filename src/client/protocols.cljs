@@ -14,7 +14,4 @@
   (spr! [this img src-xywh xy wh])
   (square! [this xy wh col]))
 
-(defprotocol IEvents
-  (anim-ch [_]))
-
 

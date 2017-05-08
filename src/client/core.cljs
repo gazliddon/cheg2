@@ -47,7 +47,7 @@
 (declare start stop restart ui-log! set-ui-field!)
 
 
-(def config { :conn-config {:url  "ws://localhost:6502"
+(def config { :conn-config {:url  "ws://localhost:6502/ws"
                             :ping-frequency 1000 }
              :html-id "game" })
 

@@ -28,6 +28,11 @@
 
 (def deaf! events/removeAll)
 
+(defn mk-system-msg [type payload t]
+  (mk-msg :system (mk-msg type payload t) t))
+
+(defn send-system-msg [messages type payload ]
+  (MB/message messages (mk-system-msg type payload 0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn animate! [cbfunc]
@@ -50,7 +55,7 @@
       ;; refresh until we're not running any more
       (animate! (fn []
                   (when @running?
-                    (MB/message messages {:type :vsync :payload {}}))))
+                    (send-system-msg messages :vsync {}))))
 
       kill-chan)))
 
@@ -68,7 +73,7 @@
   (do
     (KS/set-state! key-states k v)
     (let [ks (KS/get-state key-states k) ]
-      (MB/message messages (mk-input-msg :key ks 0)))))
+      (send-system-msg messages :key ks))))
 
 (defn add-key-events! [key-states messages]
   (do

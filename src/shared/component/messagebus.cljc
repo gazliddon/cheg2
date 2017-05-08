@@ -43,16 +43,16 @@
                          {:pub-chan pub-chan
                           :tap-chan tap-chan
                           :mult (a/mult tap-chan)
-                          :pub-bus (a/pub pub-chan :type)})))
-     this)
+                          :pub-bus (a/pub pub-chan :type)}))
+       this ))
 
    (stop [this]
      (if started?
-
        (do
          (a/close! tap-chan)
          (a/close! pub-chan) 
          (su/nil-members this :started?))
+
        this))
 
    IMessageBus

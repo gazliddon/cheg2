@@ -18,37 +18,29 @@
     [com.stuartsierra.component :as c]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defprotocol IServer
-  (stats [_]))
 
-(defn make-routes [handler]
+(defn make-routes [ handler ]
   (routes
     (GET "/ws" [] (-> handler wrap-websocket-handler) )
     (resources "/") 
-    (not-found "<p>Page not found.</p>")))
+    (not-found "<p>Page not found you bellend</p>")))
 
-(defn create-server [routes port]
-  (run-server
-    (-> handler wrap-websocket-handler) {:port port}) )
+(defn create-server [ws-handler port]
+  (->
+    (make-routes ws-handler)
+    (site)
+    (run-server {:port port})))
 
 (defrecord Server [connections config server-inst ]
-  IServer
-
-  (stats [this]
-    )
 
   c/Lifecycle
 
   (start [this]
     (if-not server-inst
-      (let [handler (fn [req]
+      (let [ws-handler (fn [req]
                       (conns/add! connections req))
 
-            my-routes (make-routes (fn [req]
-                                     (conns/add! connections req)))
-
-            server-inst (run-server
-                          (-> handler wrap-websocket-handler) {:port (:port config)}) ]
+            server-inst (create-server ws-handler 6502)]
 
         (t/info "starting server component")
 
