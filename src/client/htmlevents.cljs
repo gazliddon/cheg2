@@ -4,6 +4,8 @@
     [shared.component.messagebus :as MB]
     [shared.messages :refer [mk-msg]]
 
+    [client.component.clock :as CLK]
+
     [sablono.core :as html :refer-macros [html]]
     [shared.utils :as su]
     [client.utils :as u]
@@ -31,8 +33,8 @@
 (defn mk-system-msg [type payload t]
   (mk-msg :system (mk-msg type payload t) t))
 
-(defn send-system-msg [messages type payload ]
-  (MB/message messages (mk-system-msg type payload 0)))
+(defn send-system-msg [messages type payload t]
+  (MB/message messages (mk-system-msg type payload t)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn animate! [cbfunc]
@@ -40,7 +42,7 @@
     (.requestAnimationFrame js/window #(animate! cbfunc))))
 
 (defn vsync-events
-  [messages]
+  [messages clock]
 
   (let [kill-chan (a/chan)
         running? (atom true) ]
@@ -55,7 +57,7 @@
       ;; refresh until we're not running any more
       (animate! (fn []
                   (when @running?
-                    (send-system-msg messages :vsync {}))))
+                    (send-system-msg messages :vsync {} (CLK/get-time clock)))))
 
       kill-chan)))
 
@@ -70,10 +72,10 @@
   {:type :input :payload (mk-msg type payload t) })
 
 (defn set-state! [key-states messages k v]
-  (do
-    (KS/set-state! key-states k v)
-    (let [ks (KS/get-state key-states k) ]
-      (send-system-msg messages :key ks))))
+  (let [ks (KS/get-state key-states k)]
+    (when-not (= v (:current ks) )
+      (KS/set-state! key-states k v)
+      (send-system-msg messages :key ks 0))))
 
 (defn add-key-events! [key-states messages]
   (do
@@ -87,14 +89,14 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord HtmlEventsComponent [started? messages key-states kill-ch ]
+(defrecord HtmlEventsComponent [clock started? messages key-states kill-ch ]
   c/Lifecycle
 
   (start [this]
     (if-not started?
       (do
         (add-key-events! key-states messages)
-        (su/add-members this :started? { :kill-ch (vsync-events messages)})))
+        (su/add-members this :started? { :kill-ch (vsync-events messages clock)})))
     this)
 
   (stop [this]

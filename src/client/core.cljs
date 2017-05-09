@@ -5,7 +5,9 @@
     [shared.component.listeners :as MBL ]
     [shared.component.keystates :as KS]
 
+    [client.component.clock :as CLK]
     [client.audio :as AU]
+
     [client.game :as game]
     [cljs.analyzer :as ana]
     [taoensso.timbre :as t
@@ -94,10 +96,13 @@
 
       :system (mk-html-component (:html-id config))
 
+      :clock (CLK/mk-clock)
+
       :events (c/using 
                 (mk-html-events-component)
                 [:key-states
-                 :messages])
+                 :messages
+                 :clock])
 
       :client-connection (c/using
                            (mk-client-component )
@@ -245,8 +250,12 @@
   (reset! sys-atom nil)) )
 
 (defn start []
+
+  (t/info "\n\n\n\n\nRestarting")
   (do
+    (t/info "*** stopping ****")
     (stop)
+    (t/info "*** stopping done ****\n\n")
     (->>
       (mk-game config )
       (c/start-system )

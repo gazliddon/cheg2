@@ -46,8 +46,6 @@
             (recur))
           (t/info topic " listener closed")))))
 
-(defn topic->event! [this topic ]
-  (topic->func! this topic #(fsm/event! this topic (:payload %))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -161,15 +159,9 @@
 
                        :network-error {:running-game :doing-network-error}
 
-                       :vsync {:running-gane :updating-game
-                               :waiting :updating-waiting }
-
                        :done {:starting-game :running-game
                               :stopping-game :not-running
-                              :doing-network-error :not-running
-
-                              :updating-game :running-game
-                              :updating-waiting :waiting }
+                              :doing-network-error :not-running }
 
                        :quit {:running-game :stopping-game} })
 
@@ -186,8 +178,11 @@
 ;; handling remote messages
 (defmulti on-remote-message (fn [this msg] (:type msg)))
 
+(defmethod on-remote-message :hello-from-server [this msg]
+  (fsm/event! this :hello-from-server msg))
+
 (defmethod on-remote-message :ping [this msg]
-    (send-msg-to-remote this :pong (:payload msg)))
+    (send-msg-to-remote this :pong msg))
 
 (defmethod on-remote-message :default [this msg]
   (t/error "unhandled remote message" msg))
@@ -197,11 +192,16 @@
 
 (defmulti  on-system-message (fn [this msg] (:type msg)) )
 
-(defmethod on-system-message :vsync [this msg]
-  (fsm/event! this :vsync {}))
+(defmethod on-system-message :vsync [{:keys [system clock] :as this} {:keys [event-time] :as msg}]
+  (let [event-time-secs (double (/ event-time 1000))]
+   (case (fsm/get-state this)
+    :waiting (print-waiting! system event-time-secs)
+    :running-game (print! system event-time-secs)
+    nil) 
+    )
+  )
 
 (defmethod on-system-message :key [this msg]
-  ;; TODO something with keys here, probably add to a Q
   )
 
 (defmethod on-system-message :default [this msg]
@@ -218,6 +218,13 @@
 
 (defmulti game-state (fn [this ev payload] (:state ev)))
 
+
+(defmethod game-state :waiting
+ [{:keys [state ] :as this} ev payload])
+
+(defmethod game-state :running-game
+  [{:keys [state ] :as this} ev payload])
+
 (defmethod game-state :default [_ ev _]
   (t/error "unhandled state entry" (:state ev)))
 
@@ -230,14 +237,17 @@
   [{:keys [state ] :as this} ev payload]
   (fsm/event! this :done {}))
 
-(defmethod game-state :running-game
-  [{:keys [state ] :as this} ev payload])
-
 (defn add-listeners [{:keys [events com-chan messages] :as this}]
   (do
-    (topic->event! this :from-remote)
-    (topic->event! this :system )
+    (topic->func!
+      this :from-remote (fn [{:keys [payload]}]
+                          (on-remote-message this payload)))
+
+    (topic->func!
+      this :system (fn [{:keys [payload]}]
+                     (on-system-message this payload)))
     this))
+
 
 (defn ui-set-field! [{:keys [messages] :as this} k v]
  (let [msg {:type :ui-set-field :payload {:key k :value v }}]
@@ -246,8 +256,7 @@
 (defrecord Game [started? events system com-chan state fsm messages
                  client-connection ]
 
-  fsm/IStateMachine
-  (get-state [this] (fsm/get-state @fsm))
+  fsm/IStateMachine (get-state [this] (fsm/get-state @fsm))
   (event! [this ev payload] (fsm/event! @fsm ev payload))
 
   c/Lifecycle
@@ -274,9 +283,7 @@
           (remove-fsm :fsm) 
           (assoc :started nil
                  :state nil)))
-      this))
-  
-  )
+      this)))
 
 (defn mk-game[]
   (map->Game {}))
