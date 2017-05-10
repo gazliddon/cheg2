@@ -61,6 +61,24 @@
 
       kill-chan)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn add-event-listeners! [messages events-to-add]
+  (doseq [[ev-type ev-func] events-to-add]
+    (do
+      (deaf! ev-type)
+      (->
+        (fn [x] (ev-func messages x))
+        (events/listen js/window ev-type )))))
+
+(defn remove-event-listeners! [events-to-add]
+  (doseq [ev-type (keys events-to-add)]
+    (deaf! ev-type)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
 (defn key-listen-with-callback! [ev func]
   (deaf! ev)
   (->>
@@ -77,7 +95,7 @@
       (KS/set-state! key-states k v)
       (send-system-msg messages :key ks 0))))
 
-(defn add-key-events! [key-states messages]
+(defn add-key-events! [messages key-states]
   (do
     (key-listen-with-callback! keyup-events #(set-state! key-states messages % false) )
     (key-listen-with-callback! keydown-events #(set-state! key-states messages % true) )))
@@ -89,13 +107,21 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def events-to-add
+  {resize-events (fn [messages x] (println x))}
+  )
+
 (defrecord HtmlEventsComponent [clock started? messages key-states kill-ch ]
   c/Lifecycle
 
   (start [this]
     (if-not started?
       (do
-        (add-key-events! key-states messages)
+
+        ; (add-event-listeners! messages events-to-add)
+
+        (add-key-events! messages key-states)
+
         (su/add-members this :started? { :kill-ch (vsync-events messages clock)})))
     this)
 
@@ -103,6 +129,7 @@
     (if started?
       (do
         (a/put! kill-ch :stop)
+        (remove-event-listeners! events-to-add)
         (remove-key-events!)
         (su/nil-members this :started?))
 

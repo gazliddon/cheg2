@@ -189,7 +189,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; handling system messags
-
 (defmulti  on-system-message (fn [this msg] (:type msg)) )
 
 (defmethod on-system-message :vsync [{:keys [system clock] :as this} {:keys [event-time] :as msg}]
@@ -197,9 +196,7 @@
    (case (fsm/get-state this)
     :waiting (print-waiting! system event-time-secs)
     :running-game (print! system event-time-secs)
-    nil) 
-    )
-  )
+    nil)))
 
 (defmethod on-system-message :key [this msg]
   )

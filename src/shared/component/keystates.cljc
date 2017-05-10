@@ -1,5 +1,6 @@
 (ns shared.component.keystates
   (:require
+    [shared.utils :as su]
     [taoensso.timbre :as t ]
     [com.stuartsierra.component :as c]
     [shared.component.messagebus :as MB]))
@@ -28,18 +29,14 @@
 
   (start [this]
     (if-not started?
-      (->
-        this
-        (assoc :key-states-a (atom {})
-               :started? true))
+      (su/add-members this
+                      :started?
+                      { :key-states-a (atom {}) })
       this))
 
   (stop [this]
     (if started?
-      (->
-        this
-        (assoc :key-states-a nil
-               :started? nil))
+      (su/nil-members this :started?)
       this)))
 
 (defn mk-keystates []

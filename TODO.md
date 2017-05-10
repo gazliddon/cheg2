@@ -1,19 +1,11 @@
-# Todo Tomorrow
+# Todo Next
 
-* Get connect button working
+* Get event listners working (resize)
+* Make canvas resize
+* Why is the server crashing on connect?
+
  
  
-
-* Sort out client state changes
-    * Disconnected
-* Start music playing
-* Put player control back in
-    * Broadcast position to server
-* Repair text printer
-* Hook messages for UI to om/next bits
-
-* Get the client to send the ping time back
-    * losing payload from server on pings for some reason
 
 # Server client pruning
 
