@@ -67,7 +67,7 @@
   (doseq [[ev-type ev-func] events-to-add]
     (do
       (deaf! ev-type)
-      (->
+      (->>
         (fn [x] (ev-func messages x))
         (events/listen js/window ev-type )))))
 
@@ -108,7 +108,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def events-to-add
-  {resize-events (fn [messages x] (println x))}
+  [ [ resize-events (fn [messages x] (send-system-msg messages :resize {} 0)) ]
+   ]
   )
 
 (defrecord HtmlEventsComponent [clock started? messages key-states kill-ch ]
@@ -117,9 +118,7 @@
   (start [this]
     (if-not started?
       (do
-
-        ; (add-event-listeners! messages events-to-add)
-
+        (add-event-listeners! messages events-to-add)
         (add-key-events! messages key-states)
 
         (su/add-members this :started? { :kill-ch (vsync-events messages clock)})))

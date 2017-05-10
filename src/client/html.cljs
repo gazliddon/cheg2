@@ -20,6 +20,19 @@
 (enable-console-print!)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; generic
+
+(defn set-dims! [el [ w h ] ]
+  (do
+    (->>
+      #js {:width w :height h }
+      (gdom/setProperties el ) )  
+    el))
+
+(defn get-dims [el]
+  [(.-offsetWidth el ) (.-offsetHeight el ) ])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Canvas stuff
 (defn mk-canvas-element [[ w h ] id]
   (let [e (gdom/createElement "canvas")]
@@ -62,23 +75,29 @@
        :html canvas-el
        :wh wh })))
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; handles building html, rendering, logging
 
+(defn resize-canvas-to-containg-element!
+  "resize our canvas to the size of the enclosing game-el"
 
-(defrecord HtmlComponent [started ctx id wh-atom game-el]
+  [{:keys [game-el canvas-el] :as this}]
+
+  (let [wh (get-dims game-el)]
+    (p/resize! this wh)))
+
+(defrecord HtmlComponent [started ctx id wh-atom game-el canvas-el]
   c/Lifecycle
 
   (start [this]
     (if-not started
       (let [game-el (gdom/getElement id)
-
             game-html (add-game-html! game-el)
 
             init {:started true
                   :ctx (:ctx game-html)
-                  :wh-atom (atom (:wh game-html))   
+                  :wh-atom (atom (:wh game-html) )
+                  :canvas-el (:html game-html)
                   :game-el game-el } ]
 
         (su/add-members this :to-nil init))
@@ -94,8 +113,10 @@
   p/IRender
 
   (resize! [_ wh]
-    (reset! wh-atom wh)
-    (assert false))
+    (do
+      (set-dims! canvas-el wh)
+      (reset! wh-atom wh) 
+      (ctx-smoothing! ctx false)))
 
   (dims [_] @wh-atom)
 

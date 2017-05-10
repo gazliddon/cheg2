@@ -10,6 +10,7 @@
     [goog.dom :as gdom]
 
     [client.sprdata :as sprdata]
+    [client.html :as html]
 
     [taoensso.timbre :as t
      :refer-macros [log  trace  debug  info  warn  error  fatal  report
@@ -197,6 +198,9 @@
     :waiting (print-waiting! system event-time-secs)
     :running-game (print! system event-time-secs)
     nil)))
+
+(defmethod on-system-message :resize [{:keys [system]} msg]
+  (html/resize-canvas-to-containg-element! system))
 
 (defmethod on-system-message :key [this msg]
   )
