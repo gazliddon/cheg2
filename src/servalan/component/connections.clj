@@ -1,5 +1,9 @@
 (ns servalan.component.connections
   (:require
+    [thi.ng.geom.core.vector :as v :refer [vec3]]  
+
+    [shared.action :refer [mk-action]]
+
     [taoensso.timbre :as t ]
     [servalan.component.clock :as clock]
 
@@ -28,7 +32,17 @@
   (broadcast! [this msg])
   (close-all! [this]))
 
-(def all-players (atom []))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defrecord Player [connection id pos clock action])
+
+(defn initial-player-action [pos start-time]
+  (mk-action pos (vec3 0 0 0) start-time (+ start-time 5000) :none))
+
+(defn mk-player [connection start-time pos clock]
+  (map->Player {:connection connection
+                :id (:id connection)
+                :clock clock
+                :action (initial-player-action pos start-time ) }))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def objs [{:id 0
@@ -60,7 +74,6 @@
     (reduce '() objs)))
 
 (def players (atom {}))
-
 
 (defn mk-player [{:keys [ws-channel] :as req}]
   {:type :player
@@ -123,7 +136,8 @@
       {:before (count conns)
        :after (count to-keep) })))
 
-(defrecord Connections [connections-atom clock]
+
+(defrecord Connections [connections-atom clock messages]
   c/Lifecycle
 
   (start [this]
@@ -152,7 +166,9 @@
           id (:id client) ]
       (do
         (clean-up! this)
+
         (swap! connections-atom assoc id client)
+
         (send!
           this id
           (mk-msg :hello-from-server {:id id } (clock/get-time clock)))

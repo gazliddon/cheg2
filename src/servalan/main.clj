@@ -7,6 +7,7 @@
     [servalan.component.clock :refer [mk-clock] ]
 
     [shared.component.messagebus :as MB ]
+    [shared.component.state :as ST ]
 
     [taoensso.timbre :as t ]
     [taoensso.timbre.appenders.core :as appenders]
@@ -45,14 +46,15 @@
   (c/stop [c]
     c)) 
 
-
 (def config {:port 6502})
 
-(defn mk-system [{:keys [port ] :as config}]
+(defn mk-system [{:keys [port] :as config}]
 
   (t/info "creating system")
 
   (c/system-map
+
+    :state (ST/mk-state)
 
     :messages (MB/mk-message-bus :type)
 
@@ -70,13 +72,14 @@
                    (connections-component)
                    [:config
                     :clock
-                    :messages ])
+                    :messages
+                    :state ])
 
     :server (c/using
               (server-component)
-              [:connect-ch :connections :config :messages ])
+              [:connect-ch :connections :config :messages :state])
 
-    :app (c/using (map->App {}) [:server :config :messages])))
+    :app (c/using (map->App {}) [:server :config :messages :state])))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

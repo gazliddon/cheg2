@@ -34,21 +34,6 @@
     [cljs.core.async.macros :as a :refer [go go-loop]]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; TODO put in own file - message bus
-
-(defn topic->func! [{:keys [messages] :as this} topic cb]
-  (let [sub (MB/sub-topic messages topic (chan))]
-      (t/info "listening for topic " topic)
-   (go-loop
-        []
-        (if-let [msg (<! sub)]
-          (do
-            (cb msg)
-            (recur))
-          (t/info topic " listener closed")))))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def player (atom {:pos [10 10]}))
 
@@ -240,13 +225,18 @@
 
 (defn add-listeners [{:keys [events com-chan messages] :as this}]
   (do
-    (topic->func!
-      this :from-remote (fn [{:keys [payload]}]
-                          (on-remote-message this payload)))
+    (MB/sub-with-callback
+      messages
+      :from-remote
+      (fn [{:keys [payload]}]
+        (on-remote-message this payload)))
 
-    (topic->func!
-      this :system (fn [{:keys [payload]}]
-                     (on-system-message this payload)))
+    (MB/sub-with-callback
+      messages
+      :system
+      (fn [{:keys [payload]}]
+        (on-system-message this payload)))
+
     this))
 
 

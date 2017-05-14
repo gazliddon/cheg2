@@ -1,10 +1,7 @@
 # Todo Next
 
-* Get event listners working (resize)
-* Make canvas resize
 * Why is the server crashing on connect?
 
- 
  
 
 # Server client pruning

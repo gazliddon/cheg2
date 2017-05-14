@@ -15,6 +15,8 @@
 
                  [compojure "1.6.0"]
 
+                 [thi.ng/geom "0.0.908"]
+
                  [org.clojure/clojurescript "1.9.229"]
 
                  [sablono "0.2.3"]

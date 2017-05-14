@@ -6,11 +6,14 @@
 
    [shared.fsm :as FSM]
 
+   [shared.msgutils :as MU]
+
    [shared.component.messagebus :as MB :refer [mk-message-bus] ]
 
    [shared.messages :refer [mk-msg]]
 
    [client.utils :as cu]
+   [shared.utils :as su]
 
    [taoensso.timbre :as t
     :refer-macros [log  trace  debug  info  warn  error  fatal  report ]]
@@ -30,17 +33,11 @@
 (enable-console-print!)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn send-from-nw-msg [{:keys [messages] :as this} payload]
-  (let [wrapped-msg {:type :from-remote :payload payload}]
-    (do
-      (MB/message messages wrapped-msg))))
-
 (defn send-ui-msg [{:keys [messages] :as this} payload]
     (MB/message messages {:type :ui :payload payload}))
 
-(defn send-disconnected-msg [this]
-    (send-from-nw-msg this {:type :disconnected}))
+(defn send-disconnected-msg [{:keys [messages] :as this}]
+    (MU/send-from-nw-msg messages {:type :disconnected}))
 
 (defmulti new-state (fn [_ ev _] (:state ev)))
 (defmethod new-state :handling-local-msg
@@ -53,7 +50,7 @@
 (defmethod new-state :handling-remote-msg
   [{:keys [messages] :as this} _ payload]
   (do
-    (send-from-nw-msg this payload)
+    (MU/send-from-nw-msg messages payload)
     (FSM/event! this :done {} )))
 
 (defmethod new-state :is-disconnecting
@@ -93,6 +90,21 @@
   (t/error "payload -> " payload))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn listen-for-msgs-to-remote!
+  ;; listen on to-remote-chan for any 
+  ;; messages we should send on
+  [{:keys [to-remote-chan] :as this}]
+  (do
+    (t/info "subbing to to-network msgs")  
+    (a/go-loop
+      []
+      (if-let [msg (<! to-remote-chan)]
+        (do
+          (client/send! this (:payload msg ))
+          (recur))
+        (t/info "to-network sub closed")))
+    this))
+
 (defrecord ClientComponent [com-chan config
                             started? fsm kill-chan messages 
                             to-remote-chan ]
@@ -126,38 +138,32 @@
   c/Lifecycle
 
   (start [this]
-    (let [to-remote-chan (MB/sub-topic messages :to-remote (chan))
+    (if-not started?
+      (-> 
+        this
 
-          this (-> (c/stop this)
-                   (assoc
-                     :to-remote-chan to-remote-chan
-                     :started? true
-                     :kill-chan (chan)
-                     :ws-atom (atom nil))
-                   (add-connection-fsm :fsm new-state))]
-      (do
-        (a/go-loop
-          []
-          (if-let [msg (<! to-remote-chan)]
-            (do
-              (client/send! this (:payload msg ))
-              (recur))
-            (t/info "to-network sub closed")))
-        this)))
+        (su/add-members :started?
+                        {:to-remote-chan (MB/sub-topic messages :to-remote (chan))
+                         :kill-chan (chan)
+                         :ws-atom (atom nil) })
+
+        (add-connection-fsm :fsm new-state)
+        (listen-for-msgs-to-remote!))
+
+      this))
 
   (stop [this]
-    (let [this (if started?
-                 (do
-                   (t/info "stoping connection")
-                   (close! to-remote-chan)
-                   (client/disconnect! this)
-                   (remove-connection-fsm this :fsm) )
-                 this)]
-    (assoc this
-           :to-remote-chan nil
-           :started? nil
-           :kill-chan nil
-           :ws-atom nil))))
+    (if started?
+      (do
+        (t/info "stoping connection")
+        (close! to-remote-chan)
+        (->
+          this
+          (client/disconnect!)
+          (remove-connection-fsm :fsm)  
+          (su/nil-members :started?)))
+       
+      this)))
 
 (defn mk-client-component [] (map->ClientComponent {}))
 

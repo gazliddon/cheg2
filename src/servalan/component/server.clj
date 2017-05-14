@@ -1,5 +1,8 @@
 (ns servalan.component.server
   (:require
+
+    [shared.component.messagebus :as MB]
+
     [taoensso.timbre :as t ]
 
     [servalan.component.connections :as conns]
@@ -30,8 +33,24 @@
     (make-routes ws-handler)
     (site)
     (run-server {:port port})))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord Server [connections config server-inst ]
+(def world (atom
+             {:players []
+              }
+             ))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn let-sub-to-some-work! [{:keys [messages] :as this}]
+  (do
+    (->>
+      (fn [_ msg]
+        )
+
+      (MB/sub-with-callback messages :from-remote)
+      )))
+
+(defrecord Server [player connections config server-inst messages]
 
   c/Lifecycle
 

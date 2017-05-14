@@ -24,14 +24,15 @@
 (defprotocol IMessageBus
   (message [this msg])
   (sub-all [this ch]) 
-  (sub-topic [this topic ch]))
+  (sub-topic [this topic ch])
+  (sub-with-callback [this topic cb]))
 
 (defrecord MessageBus [topic-fn xf
                        tap-chan
                        pub-chan
                        mult
                        pub-bus
-                       started?  ]
+                       started? ]
    c/Lifecycle
 
    (start [this]
@@ -67,6 +68,19 @@
      (do
        (a/tap mult ch) 
        ch))
+
+   (sub-with-callback [this topic cb]
+     ;; TODO Some messiness here, dropped connections could sub to this
+     ;; what then?
+     (let [sub (sub-topic this topic (chan))]
+       (t/info "listening for topic " topic)
+       (go-loop
+         []
+         (if-let [msg (<! sub)]
+           (do
+             (cb msg)
+             (recur))
+           (t/info topic " listener closed")))))
 
    (sub-topic [this msg-type ch]
      (do

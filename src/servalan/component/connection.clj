@@ -1,8 +1,10 @@
 (ns servalan.component.connection
   (:require
+
     [shared.fsm :as FSM]
-    [shared.messages :refer [mk-msg]]
+    [shared.msgutils :as MU]
     [shared.utils :as su]
+
     [shared.connhelpers :as ch ]
     [shared.protocols.clientconnection :as client]
 
@@ -15,6 +17,23 @@
     [taoensso.timbre :as t ]
     [com.stuartsierra.component :as c]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn get-ping-time [msg]
+  (-> msg :payload :ping-time ))
+
+(defmulti on-remote-message (fn [this msg] (:type msg)))
+
+(defmethod on-remote-message :pong [{:keys [clock] :as this} {:keys [payload] :as msg }]
+  (let [t (clock/get-time clock )
+        ot (get-ping-time payload) ]
+    (t/info "PONG round time " (- t ot) )))
+
+(defmethod on-remote-message :default [{:keys [messages] :as this} msg]
+  ;; Punt any unhandled messages to the message bus
+  (MU/send-from-nw-msg messages msg))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defmulti new-state (fn [_ ev _] (:state ev)))
 
 (defmethod new-state :handling-local-msg
@@ -29,13 +48,9 @@
         (FSM/event! this :remote-socket-closed {} )))))
 
 (defmethod new-state :handling-remote-msg
-  [{:keys [com-chan clock] :as this} _ {:keys [type payload] :as msg}]
+  [{:keys [com-chan clock] :as this} _ payload]
   (do
-    (t/info "handling remote msg" msg )
-    (when (= type :pong)
-      (let [t (clock/get-time clock )
-            ot (:ping-time payload ) ]
-        (t/info "PONG round time " (- t ot) )))
+    (on-remote-message this payload)
     (FSM/event! this :done {})))
 
 (defmethod new-state :is-disconnecting
