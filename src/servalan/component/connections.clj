@@ -80,19 +80,6 @@
 (defn get-conns! [this]
   (ST/get-state this))
 
-
-; (defn- call-connection! [id method & payload]
-;   (let [conn (get @connections-atom id)]
-;     (apply method conn payload))
-;   nil)
-
-
-;(defn- call-connections!
-;  [{:keys [connections-atom]} method & payload]
-;  (doseq [[k conn] @connections-atom ]
-;    (apply method conn payload)))
-;;;;;;;;;;;
-
 (defn part-map [f mp]
   (->
     (fn [r k v]
