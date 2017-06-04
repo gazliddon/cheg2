@@ -35,22 +35,8 @@
     (run-server {:port port})))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def world (atom
-             {:players []
-              }
-             ))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn let-sub-to-some-work! [{:keys [messages] :as this}]
-  (do
-    (->>
-      (fn [_ msg]
-        )
-
-      (MB/sub-with-callback messages :from-remote)
-      )))
-
-(defrecord Server [player connections config server-inst messages]
+(defrecord Server [connections config server-inst messages]
 
   c/Lifecycle
 
@@ -64,7 +50,6 @@
         (t/info "starting server component")
 
         (assoc this
-               :state :running
                :server-inst server-inst) )
       this))
 
@@ -74,10 +59,8 @@
         (t/info "stopping server component")
 
         (server-inst :timeout 300)
-
         (assoc this
-               :server-inst nil
-               :state nil))
+               :server-inst nil))
       this)))
 
 (defn server-component [] (map->Server {}) )

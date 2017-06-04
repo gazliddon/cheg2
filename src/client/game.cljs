@@ -1,7 +1,13 @@
 (ns client.game
 
   (:require
+    [thi.ng.geom.core :as g]
+    [thi.ng.geom.core.vector :as v :refer [vec3]]  
+
     [shared.component.keystates :as KS]
+    [shared.component.state :as ST]
+
+    [shared.action :as AK]
 
     [shared.protocols.clientconnection :as client]
     [shared.fsm :as fsm :refer [add-fsm remove-fsm]]
@@ -109,17 +115,21 @@
       ; (p/square! (:pos @player) [10 10] [255 255 255] )
       )))
 
-(defn print! [renderer t]
-  (let [spr-bank (sprdata/get-bank :pickups)
+(defn print! [{:keys [system] :as this} t]
+  (let [renderer system
+        spr-bank (sprdata/get-bank :pickups)
         group (sprdata/get-group :pickups :pickups)
         rimg (:img spr-bank)
         [w h] (p/dims renderer)
         desired 320
-        scale (/ w desired) ]
+        scale (/ w desired)
+        player (ST/get-state this [:player]) ]
     (do
       (p/clear-all! renderer [10 10 10])
 
       (p/set-transform! renderer scale 0 0 scale 0 0)
+
+      (p/square! renderer (:pos player) [20 20] [255 255 255])
 
       (let [t (* t 1.001)]
         (doseq [n (range 28 )]
@@ -173,6 +183,33 @@
 (defmethod on-remote-message :default [this msg]
   (t/error "unhandled remote message" msg))
 
+
+(def k-to-v
+
+  {:ArrowUp (vec3 0 -1 0)
+   :ArrowDown (vec3 0 1 0)
+   :ArrowLeft (vec3 -1 0 0)
+   :ArrowRight (vec3 1 0 0) })
+
+(defn get-vel [k-to-v key-states]
+ (->
+      (fn [res k v]
+        (if (:current (KS/get-state key-states k))
+          (g/+ res v)
+          res))
+      (reduce-kv (vec3 0 0 0) k-to-v)) )
+
+(defn run-game [{:keys [system key-states ] :as this}]
+  (let [player (ST/get-state this [:player])
+        v (get-vel k-to-v key-states)
+        new-player (update player :pos #(g/+ v %)) ]
+
+    (->
+      (ST/set-state! this [:player] new-player)
+      )
+    )
+  )
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; handling system messags
 (defmulti  on-system-message (fn [this msg] (:type msg)) )
@@ -180,8 +217,12 @@
 (defmethod on-system-message :vsync [{:keys [system clock] :as this} {:keys [event-time] :as msg}]
   (let [event-time-secs (double (/ event-time 1000))]
    (case (fsm/get-state this)
+
     :waiting (print-waiting! system event-time-secs)
-    :running-game (print! system event-time-secs)
+
+    :running-game (doto this
+                    (run-game )
+                    (print! event-time-secs))
     nil)))
 
 (defmethod on-system-message :resize [{:keys [system]} msg]
@@ -204,23 +245,25 @@
 
 (defmulti game-state (fn [this ev payload] (:state ev)))
 
-
 (defmethod game-state :waiting
- [{:keys [state ] :as this} ev payload])
+ [{:keys [] :as this} ev payload])
 
 (defmethod game-state :running-game
-  [{:keys [state ] :as this} ev payload])
+  [{:keys [] :as this} ev payload])
 
 (defmethod game-state :default [_ ev _]
   (t/error "unhandled state entry" (:state ev)))
 
 (defmethod game-state :starting-game
-  [{:keys [state ] :as this} ev payload]
-  (swap! state assoc :id (-> payload :payload :id))
-  (fsm/event! this :done {}))
+  [{:keys [] :as this} ev {:keys [payload] :as msg}]
+  (do
+    (ST/set-state! this [:player] {:id (:id payload)
+                                   :pos (vec3 100 100 0)
+                                   } )
+    (fsm/event! this :done {})))
 
 (defmethod game-state :stopping-game
-  [{:keys [state ] :as this} ev payload]
+  [{:keys [] :as this} ev payload]
   (fsm/event! this :done {}))
 
 (defn add-listeners [{:keys [events com-chan messages] :as this}]
@@ -239,15 +282,20 @@
 
     this))
 
-
 (defn ui-set-field! [{:keys [messages] :as this} k v]
  (let [msg {:type :ui-set-field :payload {:key k :value v }}]
     (MB/message messages msg )))
 
-(defrecord Game [started? events system com-chan state fsm messages
+(defrecord Game [state korks
+                 started? events system com-chan fsm messages
                  client-connection ]
 
-  fsm/IStateMachine (get-state [this] (fsm/get-state @fsm))
+  ST/IStateClient
+  (get-korks [_] korks)
+  (get-state-holder [_] state)
+
+  fsm/IStateMachine
+  (get-state [this] (fsm/get-state @fsm))
   (event! [this ev payload] (fsm/event! @fsm ev payload))
 
   c/Lifecycle
@@ -255,14 +303,12 @@
   (start [this]
     (if-not started?
       (let [this (-> this 
-                     (assoc :started? true
-                            :state (atom nil))
+                     (assoc :started? true)
                      (add-fsm :fsm game-state-table game-state :waiting )
                      (add-listeners))]
         (do
           (client/connect! client-connection)
           this)))
-
     this)
 
   (stop [this]
@@ -272,12 +318,11 @@
           this
           (fsm/event! :quit {})
           (remove-fsm :fsm) 
-          (assoc :started nil
-                 :state nil)))
+          (assoc :started nil)))
       this)))
 
 (defn mk-game[]
-  (map->Game {}))
+  (map->Game {:korks [:game]}))
 
 
 

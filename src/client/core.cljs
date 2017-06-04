@@ -2,6 +2,7 @@
   (:require
 
     [shared.component.messagebus :as MB ]
+    [shared.component.state :as ST ]
     [shared.component.listeners :as MBL ]
     [shared.component.keystates :as KS]
 
@@ -73,11 +74,16 @@
 
 (def app ( mk-app ))
 
+(def game-state (atom {}))
+
 (defn mk-game [config ]
 
   (let [com-chan (chan) ]
 
     (c/system-map
+
+      :state (ST/mk-state game-state)
+
       ;; Central message bus
       :messages (MB/mk-message-bus :type)
 
@@ -117,7 +123,8 @@
                :messages
                :events
                :system
-               :key-states ])
+               :key-states
+               :state])
 
       :app (c/using
              (map->App {})

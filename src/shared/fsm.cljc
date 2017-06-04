@@ -14,7 +14,7 @@
         next-st (get st-entry state state) ]
     next-st))
 
-(defrecord StateMachine [table state dispatcher]
+(defrecord StateMachine [table state korks dispatcher]
 
   IStateMachine
 
@@ -39,7 +39,9 @@
 
 (defn mk-state-machine
   ([table dispatcher init-state]
-   (->StateMachine table (atom init-state) dispatcher))
+   (map->StateMachine {:table table
+                       :state (atom init-state)
+                       :dispatcher dispatcher}))
 
  ([table dispatcher]
    (mk-state-machine table dispatcher :none)) )
@@ -55,7 +57,6 @@
     (distinct)))
 
 (defn add-fsm 
-  
   ([this fsm-key table dispatcher init-state]
     (let [fsm-atom (atom nil)]
 

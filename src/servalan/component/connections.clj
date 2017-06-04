@@ -3,6 +3,8 @@
     [thi.ng.geom.core.vector :as v :refer [vec3]]  
 
     [shared.action :refer [mk-action]]
+    [shared.component.messagebus :as MB]
+    [shared.component.state :as ST]
 
     [taoensso.timbre :as t ]
     [servalan.component.clock :as clock]
@@ -25,6 +27,7 @@
     [com.stuartsierra.component :as c]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defprotocol IConnections
   (clean-up! [ths])
   (add!  [this conn])
@@ -33,72 +36,62 @@
   (close-all! [this]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord Player [connection id pos clock action])
+(defrecord PlayerConn [state korks started? client]
 
-(defn initial-player-action [pos start-time]
-  (mk-action pos (vec3 0 0 0) start-time (+ start-time 5000) :none))
+  ST/IStateClient
+  (get-korks [_] korks)
+  (get-state-holder [_] state)
 
-(defn mk-player [connection start-time pos clock]
-  (map->Player {:connection connection
-                :id (:id connection)
-                :clock clock
-                :action (initial-player-action pos start-time ) }))
+  client/IClientConnection
+  (send! [this msg] (client/send! this msg))
+  (connect! [this] (client/connect! this))
+  (disconnect! [this] (client/disconnect! this))
+  (is-connected? [this] (client/is-connected? this)) 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(def objs [{:id 0
-            :type :frutz
-            :start 0
-            :duration 1.5
-            :pos [10 10]
-            :col [1 1 0] }
+  c/Lifecycle
 
-           {:id 1
-            :type :frutz
-            :start 0.5
-            :duration 3
-            :pos [30 10]
-            :col [1 0 1] } ])
+  (start [this]
+    (if-not started?
+      (do
 
-(defn in-range? [t s d]
-  (and (>= t s) (< t (+ s d))))
+        this)
 
-(defn obj-in-range? [t {:keys [start duration]}]
-  (in-range? t start duration))
+      this))
 
-(defn active-objs [t objs]
-  (->
-    (fn [os o]
-      (if (obj-in-range? t o)
-        (conj os o)
-        os))
-    (reduce '() objs)))
+  (stop [this]
+    (if started?
+      (do
+        (client/disconnect! client)
+        (c/stop client)
+        (ST/set-state! this nil)
+        (assoc this :started? nil))
+      this )))
 
-(def players (atom {}))
-
-(defn mk-player [{:keys [ws-channel] :as req}]
-  {:type :player
-   :last-ping -1
-   :remote (:remote-addr req)
-   :ws-channel ws-channel })
-
-(defn mk-player-msg [typ payload event-time]
-  {:type typ :payload payload  :event-time event-time})
-
-(defn msg-player! [player typ payload event-time]
-  (a/put! (:to-player player) (mk-player-msg typ payload event-time)))
+(defn mk-player-conn [this id client]
+  (let [cs nil]
+    (->
+      (map->PlayerConn (merge
+                         (ST/child-state this id)             
+                         {:client client }))
+      (c/start))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- call-connection! [{:keys[connections-atom]} id method & payload]
-  (let [conn (get @connections-atom id)]
-    (apply method conn payload))
-  nil)
+(defn get-conns! [this]
+  (ST/get-state this))
 
-(defn- call-connections!
-  [{:keys [connections-atom]} method & payload]
-  (doseq [[k conn] @connections-atom ]
-    (apply method conn payload)))
-;;;;;;;;;;
+
+; (defn- call-connection! [id method & payload]
+;   (let [conn (get @connections-atom id)]
+;     (apply method conn payload))
+;   nil)
+
+
+;(defn- call-connections!
+;  [{:keys [connections-atom]} method & payload]
+;  (doseq [[k conn] @connections-atom ]
+;    (apply method conn payload)))
+;;;;;;;;;;;
 
 (defn part-map [f mp]
   (->
@@ -107,13 +100,15 @@
         (assoc-in r [tst k] v)))
     (reduce-kv {} mp)))
 
-;;;;;;;;;;
+(defn do-connections [{:keys [] :as this} func]
+  (doseq [[k conn] (ST/get-state this)]
+          (func conn)))
 
-(defn print-stats [connections]
-  (let [conns @(-> connections :connections-atom)]
-    (println (str "there are " (count conns) " connections"))
-    (doseq [[k conn] conns]
-      (println (str "connected? " (client/is-connected? conn) ))))
+(defn print-stats [this]
+  (->
+    (fn [{:keys [client player]}]
+      (println (str "connected? " (client/is-connected? client) )))
+    (do-connections))
   :done)
 
 (defn conn-dead? [conn]
@@ -126,31 +121,41 @@
     (do
       [to-close to-keep])))
 
-(defn clean-connections! [{:keys [connections-atom]}]
-  (let [conns @connections-atom
+(defn clean-connections! [{:keys [messages] :as this}]
+  (let [conns (ST/get-state this)
         [to-close to-keep] (partition-connections conns)]
     (do
-      (reset! connections-atom to-keep)
-      (doseq [[_ conn] to-close] (c/stop conn))
+      (ST/set-state! this to-keep)
+      (doseq [[id conn] to-close]
+        (MB/message messages {:type :remove-player :id id})
+        (c/stop conn))
 
       {:before (count conns)
        :after (count to-keep) })))
 
+(defrecord Connections [started? state clock messages]
 
-(defrecord Connections [connections-atom clock messages]
+  ST/IStateClient
+
+  (get-korks [_] [:players])
+  (get-state-holder [_] state)
+
   c/Lifecycle
 
   (start [this]
-    (do
-      (t/info "starting connections component: I'm listening!")
-      (->
-        (c/stop this)
-        (assoc :connections-atom (atom {})))))
+    (if-not started?
+      (do
+        (t/info "starting connections component: I'm listening!")
+        (ST/set-state! this {})
+        (assoc this :started? true))
+      this))
 
   (stop [this]
-    (when connections-atom
-      (close-all! this))
-    (assoc this :connections-atom nil))
+    (if started?
+      (do
+        (close-all! this) 
+        (assoc this :started? nil) )
+      this))
 
   IConnections
 
@@ -165,31 +170,31 @@
     (let [client (conn/mk-connection req clock)
           id (:id client) ]
       (do
-        (clean-up! this)
-
-        (swap! connections-atom assoc id client)
-
-        (send!
-          this id
-          (mk-msg :hello-from-server {:id id } (clock/get-time clock)))
-        this)))
+        (mk-player-conn this id client)  
+        (clean-up! this)))) 
 
   (send! [this id msg]
     (do
-      (call-connection! this id client/send! msg)
+      (client/send! (ST/get-state this id) msg)
       this))
 
   (broadcast! [this msg]
     (do
+      (doseq [ [id conn] (ST/get-state this) ]
+        (client/send! conn msg))
+
       (clean-up! this)
-      (call-connections! this client/send! msg)
+
       this))
 
   (close-all! [this]
     (do
+      (doseq [ [id conn] (ST/get-state this) ]
+        (c/stop conn))
       (clean-up! this)
-      (call-connections! this client/disconnect! )
-      this)))
+      this))
+
+)
 
 (defn connections-component []
   (map->Connections {} ))

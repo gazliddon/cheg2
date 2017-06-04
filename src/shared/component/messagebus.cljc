@@ -51,7 +51,7 @@
      (if started?
        (do
          (a/close! tap-chan)
-         (a/close! pub-chan) 
+         (a/close! pub-chan)
          (su/nil-members this :started?))
 
        this))
@@ -61,12 +61,12 @@
    (message [this msg]
      (do
        (a/put! tap-chan msg)
-       (a/put! pub-chan msg) 
+       (a/put! pub-chan msg)
        this))
 
    (sub-all [this ch]
      (do
-       (a/tap mult ch) 
+       (a/tap mult ch)
        ch))
 
    (sub-with-callback [this topic cb]
@@ -84,7 +84,7 @@
 
    (sub-topic [this msg-type ch]
      (do
-       (a/sub pub-bus msg-type ch)  
+       (a/sub pub-bus msg-type ch)
        ch)))
 
 (defn mk-message-bus
