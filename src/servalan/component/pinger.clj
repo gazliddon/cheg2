@@ -1,5 +1,8 @@
 (ns servalan.component.pinger
   (:require
+
+    [clojure.spec.alpha :as s]
+
     [servalan.macros :as m]
 
     [servalan.component.clock :as clock]
@@ -30,25 +33,30 @@
             (recur))
 
           (do
-            (t/info "closing pinger"))))
+            (t/info "closing pinger service"))))
 
-      timer-chan  )))
+      timer-chan)))
 
 (defrecord Pinger [connections timer-chan clock]
   component/Lifecycle
 
   (start [this]
-    (->
+    (if-not timer-chan
+     (->
       this
-      (component/stop)
       (assoc
-        :timer-chan (mk-pinger-process clock connections))))
+        :timer-chan (mk-pinger-process clock connections)))
+     this))
 
   (stop [this]
     (do
-      (when timer-chan
-        (a/>!! timer-chan :dead))
-      (assoc this :timer-chan nil)))
+      (if timer-chan
+        (do
+          (a/>!! timer-chan :dead) 
+          (assoc this :timer-chan nil)
+          (t/info "pinger component closed"))
+
+        this)))
 
   IPinger
   (got-pong [this id]))

@@ -53,7 +53,7 @@
   (start [this]
     (if-not started?
       (do
-
+        (println "started!")
         this)
 
       this))
@@ -68,12 +68,11 @@
       this )))
 
 (defn mk-player-conn [this id client]
-  (let [cs nil]
-    (->
-      (map->PlayerConn (merge
-                         (ST/child-state this id)             
-                         {:client client }))
-      (c/start))))
+  (->
+    (map->PlayerConn (merge
+                       (ST/child-state this id)             
+                       {:client client }))
+    (c/start)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -87,7 +86,7 @@
         (assoc-in r [tst k] v)))
     (reduce-kv {} mp)))
 
-(defn do-connections [{:keys [] :as this} func]
+(defn do-connections [this func]
   (doseq [[k conn] (ST/get-state this)]
           (func conn)))
 
@@ -95,7 +94,7 @@
   (->
     (fn [{:keys [client player]}]
       (println (str "connected? " (client/is-connected? client) )))
-    (do-connections))
+    (do-connections this))
   :done)
 
 (defn conn-dead? [conn]

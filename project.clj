@@ -8,16 +8,25 @@
 
   :global-vars {*warn-on-reflection* true}
 
-  :dependencies [[org.clojure/clojure "1.8.0"]
+  :dependencies [
 
-                 ; [org.clojure/test.check "0.9.0"]
-                 ; [cljs-ajax "0.5.9"]
+                 ;; New
+
+                 [org.clojure/clojure "1.9.0-alpha15"]
+                 [org.clojure/spec.alpha "0.1.109"]
+
+                 [org.clojure/clojurescript "1.9.229"]
+                 [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
+
+                 ; [org.omcljs/om "0.8.8"]
+
+                 ;; old
+
+                 [org.omcljs/om "1.0.0-alpha34"] 
 
                  [compojure "1.6.0"]
 
                  [thi.ng/geom "0.0.908"]
-
-                 [org.clojure/clojurescript "1.9.229"]
 
                  [sablono "0.2.3"]
 
@@ -27,15 +36,11 @@
 
                  [com.taoensso/timbre "4.8.0"]
 
-                 [org.omcljs/om "1.0.0-alpha34"] 
-
                  [com.stuartsierra/component "0.3.2"]
                  [ring-middleware-format "0.7.2"]
-                 [ring "1.5.1"]
+                 [ring "1.5.1"] ]
 
-                 [org.clojure/core.async "0.2.395" :exclusions [org.clojure/tools.reader]]]
-
-  :plugins [[lein-figwheel "0.5.9"]
+  :plugins [[lein-figwheel "0.5.10"]
             [lein-cljsbuild "1.1.5" :exclusions [[org.clojure/clojure]]]]
 
   :source-paths ["src/servalan" "src/shared"]
@@ -111,7 +116,7 @@
              }
 
 :profiles {:dev {:dependencies [[binaryage/devtools "0.9.0"]
-                                [figwheel-sidecar "0.5.9"]
+                                [figwheel-sidecar "0.5.10"]
                                 [com.cemerick/piggieback "0.2.1"]
                                 [jonase/eastwood "0.2.3" :exclusions [org.clojure/clojure]]
                                 ]
